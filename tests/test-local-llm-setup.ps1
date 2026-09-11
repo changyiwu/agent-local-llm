@@ -1,70 +1,52 @@
 #requires -Version 7.0
 <#
-    setup-gemma.ps1 的隔離測試。
+    local-llm-setup（setup-local-llm.ps1）與共用函式庫的隔離測試。
 
     不連網、不安裝、不下載模型、不動使用者環境變數、不碰真正的 opencode.json。
-    做法是用 AST 把腳本裡的函式抽出來單獨定義，避開主流程。
+    共用函式庫只有函式與常數，直接 dot-source；主腳本有主流程，用 AST 把函式與選型表抽出來單獨定義。
 
-    執行：pwsh -NoProfile -File .\tests\test-setup-gemma.ps1
+    執行：pwsh -NoProfile -File .\tests\test-local-llm-setup.ps1
 #>
 [CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
+# 腳本本身跑在 StrictMode 下，測試也開，才抓得到「讀了不存在的屬性」這類只在實機才炸的錯
+Set-StrictMode -Version Latest
 
-$ScriptPath = Join-Path $PSScriptRoot '../.opencode/skills/gemma-setup/setup-gemma.ps1' | Convert-Path
-$script:Pass = 0
-$script:Fail = 0
+. (Join-Path $PSScriptRoot 'assert.ps1')
 
-function Assert-True {
-    param([bool] $Condition, [string] $Name)
-    if ($Condition) { $script:Pass++; Write-Host "  PASS  $Name" -ForegroundColor Green }
-    else            { $script:Fail++; Write-Host "  FAIL  $Name" -ForegroundColor Red }
-}
+$SkillDir   = Join-Path $PSScriptRoot '../.opencode/skills/local-llm-setup' | Convert-Path
+$ScriptPath = Join-Path $SkillDir 'setup-local-llm.ps1'
+$LibPath    = Join-Path $PSScriptRoot '../.opencode/lib/LocalLlm.ps1' | Convert-Path
 
-function Assert-Equal {
-    param($Expected, $Actual, [string] $Name)
-    Assert-True ($Expected -eq $Actual) "$Name (預期 $Expected，實得 $Actual)"
-}
+# ---- 語法與編碼 ----------------------------------------------------------
 
-# ---- 先確認腳本本身語法沒問題 -------------------------------------------
+Write-Host "`n[1] 語法、編碼與函式庫路徑" -ForegroundColor Cyan
 
-Write-Host "`n[1] 語法與編碼" -ForegroundColor Cyan
+$null = Assert-ScriptFile -Path $LibPath
+$ast  = Assert-ScriptFile -Path $ScriptPath
+Assert-LibReference -ScriptPath $ScriptPath
+Assert-True (Test-Path (Join-Path $SkillDir 'SKILL.md')) '技能資料夾有 SKILL.md'
 
-$parseErrors = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$null, [ref]$parseErrors)
-Assert-True ($parseErrors.Count -eq 0) 'setup-gemma.ps1 可正確解析'
-if ($parseErrors.Count -gt 0) {
-    $parseErrors | ForEach-Object { Write-Host "        line $($_.Extent.StartLineNumber): $($_.Message)" -ForegroundColor Red }
-}
+# ---- 載入函式（不執行主流程） --------------------------------------------
 
-$bytes = [System.IO.File]::ReadAllBytes($ScriptPath)
-$hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
-Assert-True (-not $hasBom) '腳本是 UTF-8 無 BOM'
-
-# ---- 把函式抽出來定義（不執行主流程） -----------------------------------
+. $LibPath
 
 $funcs = $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
 foreach ($f in $funcs) { . ([scriptblock]::Create($f.Extent.Text)) }
 
-# 主流程裡的常數在函式外，這裡自行補上（與腳本保持一致）
-$OllamaApi = 'http://localhost:11434'
-$Yes = $true   # 讓 Confirm-Step 不互動
+# 選型表直接從腳本抽，不在測試裡另抄一份 —— 抄的那份和腳本漂移時測試照樣會過
+$tables = $ast.FindAll({
+    param($n)
+    $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $n.Left.VariablePath.UserPath -in @('GpuProfiles', 'CpuProfiles')
+}, $false)
+foreach ($t in $tables) { . ([scriptblock]::Create($t.Extent.Text)) }
+Assert-Equal 2 @($tables).Count '選型表（GPU / CPU）都從腳本抽出來了'
 
-$GpuProfiles = @(
-    @{ MinVram = 46;  Tag = 'gemma4:31b-it-q8_0';    SizeGB = 34;  Ctx = 131072; Note = '' }
-    @{ MinVram = 31;  Tag = 'gemma4:31b-it-qat';     SizeGB = 19;  Ctx = 65536;  Note = '' }
-    @{ MinVram = 23;  Tag = 'gemma4:26b-a4b-it-qat'; SizeGB = 16;  Ctx = 32768;  Note = '' }
-    @{ MinVram = 15;  Tag = 'gemma4:12b';            SizeGB = 7.6; Ctx = 131072; Note = '' }
-    @{ MinVram = 9.5; Tag = 'gemma4:12b';            SizeGB = 7.6; Ctx = 32768;  Note = '' }
-    @{ MinVram = 6.5; Tag = 'gemma4:e4b-it-qat';     SizeGB = 6.1; Ctx = 32768;  Note = '' }
-    @{ MinVram = 0;   Tag = 'gemma4:e2b-it-qat';     SizeGB = 4.3; Ctx = 16384;  Note = '' }
-)
-$CpuProfiles = @(
-    @{ MinRam = 32; Tag = 'gemma4:e4b-it-qat'; SizeGB = 6.1; Ctx = 16384; Note = '' }
-    @{ MinRam = 16; Tag = 'gemma4:e2b-it-qat'; SizeGB = 4.3; Ctx = 8192;  Note = '' }
-    @{ MinRam = 0;  Tag = 'gemma3:4b-it-qat';  SizeGB = 4.0; Ctx = 8192;  Note = '' }
-)
+$Yes = $true   # 讓 Confirm-Step 不互動
 
 # ---- 選型邏輯 -----------------------------------------------------------
 
@@ -125,21 +107,21 @@ function New-Gpu {
     [pscustomobject]@{ Name = $Name; VramGB = $Vram; Vendor = $Vendor; IsIntegrated = $Integrated }
 }
 
-# 這段複製 Get-WindowsHardware 的篩選條件，確認內顯與 Intel 獨顯不會被當成可用 GPU
-function Test-Usable {
-    param($Gpus)
-    @($Gpus | Where-Object {
-        -not $_.IsIntegrated -and $_.VramGB -ge 3 -and $_.Vendor -in @('NVIDIA', 'AMD')
-    } | Sort-Object VramGB -Descending)
-}
-
-$mixed = Test-Usable @((New-Gpu 'AMD Radeon(TM) Graphics' 8 'AMD' $true), (New-Gpu 'GTX 1650' 3.9))
+# 直接測腳本實際呼叫的 Select-UsableGpu，不再另抄一份篩選條件
+$mixed = @(Select-UsableGpu -Gpus @((New-Gpu 'AMD Radeon(TM) Graphics' 8 'AMD' $true), (New-Gpu 'GTX 1650' 3.9)))
 Assert-Equal 1 $mixed.Count '內顯被排除，只留下獨顯'
 Assert-Equal 'GTX 1650' $mixed[0].Name '選中的是獨顯而非數字更大的內顯'
 
-Assert-Equal 0 (Test-Usable @((New-Gpu 'Intel UHD Graphics' 2 'Intel' $true))).Count '只有內顯時沒有可用 GPU'
-Assert-Equal 0 (Test-Usable @((New-Gpu 'Intel Arc A770' 15.9 'Intel'))).Count 'Intel Arc 不被當成 Ollama 可用 GPU'
-Assert-Equal 0 (Test-Usable @((New-Gpu 'GT 710' 2))).Count 'VRAM 不足 3GB 的舊卡被排除'
+$two = @(Select-UsableGpu -Gpus @((New-Gpu 'RTX 3060' 12), (New-Gpu 'RTX 5060 Ti' 15.9)))
+Assert-Equal 'RTX 5060 Ti' $two[0].Name '兩張獨顯時取 VRAM 大的那張'
+
+Assert-Equal 0 @(Select-UsableGpu -Gpus @((New-Gpu 'Intel UHD Graphics' 2 'Intel' $true))).Count '只有內顯時沒有可用 GPU'
+Assert-Equal 0 @(Select-UsableGpu -Gpus @((New-Gpu 'Intel Arc A770' 15.9 'Intel'))).Count 'Intel Arc 不被當成 Ollama 可用 GPU'
+Assert-Equal 0 @(Select-UsableGpu -Gpus @((New-Gpu 'GT 710' 2))).Count 'VRAM 不足 3GB 的舊卡被排除'
+Assert-Equal 0 @(Select-UsableGpu -Gpus $null).Count '沒有任何顯示卡時回空清單'
+
+Assert-True ('AMD Radeon(TM) Graphics' -match $IntegratedPattern) 'AMD 內顯名稱被認成內顯'
+Assert-True ('AMD Radeon RX 7900 XTX' -notmatch $IntegratedPattern) 'AMD 獨顯名稱不被誤認成內顯'
 
 Write-Host "`n[6] macOS LaunchAgent plist" -ForegroundColor Cyan
 
@@ -152,12 +134,14 @@ try { $doc = [xml]$plistXml } catch { $parsedOk = $false }
 Assert-True $parsedOk 'plist 是合法的 XML'
 
 if ($parsedOk) {
-    $keys = @($doc.plist.dict.key)
+    # $doc.plist 會同時對到 DOCTYPE 與根元素，StrictMode 下再往下取屬性會丟例外，所以從 DocumentElement 走
+    $dict = $doc.DocumentElement.dict
+    $keys = @($dict.key)
     Assert-True ($keys -contains 'Label')            'plist 有 Label'
     Assert-True ($keys -contains 'ProgramArguments') 'plist 有 ProgramArguments'
     Assert-True ($keys -contains 'RunAtLoad')        'plist 有 RunAtLoad'
 
-    $argv = @($doc.plist.dict.array.string)
+    $argv = @($dict.array.string)
     Assert-Equal '/bin/sh' $argv[0] 'ProgramArguments 第一項是 /bin/sh'
     Assert-Equal '-c'      $argv[1] 'ProgramArguments 第二項是 -c'
 
@@ -172,7 +156,7 @@ if ($parsedOk) {
 
 Write-Host "`n[7] opencode.json 合併與備份" -ForegroundColor Cyan
 
-$tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "gemma-test-$(Get-Random)"
+$tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "local-llm-test-$(Get-Random)"
 New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 $cfgPath = Join-Path $tmpDir 'opencode.json'
 
@@ -195,7 +179,7 @@ $legacy = @'
 '@
 [System.IO.File]::WriteAllText($cfgPath, $legacy, (New-Object System.Text.UTF8Encoding($false)))
 
-Update-OpenCodeConfig -Path $cfgPath -Tag 'gemma4:12b' -Ctx 65536 | Out-Null
+Update-OpenCodeConfig -Path $cfgPath -Tag 'gemma4:12b' -Ctx 65536 -Capabilities @('completion', 'tools', 'thinking', 'vision') | Out-Null
 
 $out = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
 $model = $out['provider']['ollama']['models']['gemma4:12b']
@@ -204,11 +188,13 @@ Assert-Equal 65536 $model['limit']['context']       'limit.context 寫入正確'
 Assert-Equal 16384 $model['limit']['output']        'limit.output 有上限保護'
 Assert-True (-not $model.ContainsKey('contextLength')) '無效的 contextLength 已移除'
 Assert-True ($model['tool_call'] -eq $true)         'tool_call 已開啟（agent 才能用工具）'
+Assert-True ($model['reasoning'] -eq $true)         '模型會 thinking 時開 reasoning'
+Assert-True ($model['attachment'] -eq $true)        '模型支援圖片時開 attachment'
 Assert-True $out.ContainsKey('mcp')                 '既有的 mcp 設定被保留'
 Assert-True $out.ContainsKey('permission')          '既有的 permission 設定被保留'
 Assert-Equal 300000 $out['experimental']['mcp_timeout'] '既有的 experimental 設定被保留'
 Assert-Equal 'https://opencode.ai/config.json' $out['$schema'] '$schema 被保留'
-Assert-True ((Get-ChildItem $tmpDir -Filter 'opencode.json.bak-*').Count -eq 1) '有產生備份檔'
+Assert-True (@(Get-ChildItem $tmpDir -Filter 'opencode.json.bak-*').Count -eq 1) '有產生備份檔'
 
 $outBytes = [System.IO.File]::ReadAllBytes($cfgPath)
 $outBom = ($outBytes.Length -ge 3 -and $outBytes[0] -eq 0xEF -and $outBytes[1] -eq 0xBB -and $outBytes[2] -eq 0xBF)
@@ -228,7 +214,7 @@ Update-OpenCodeConfig -Path $cfgPath -Tag 'gemma4:12b' -Ctx 32768 | Out-Null
 $out2 = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
 Assert-Equal 32768 $out2['provider']['ollama']['models']['gemma4:12b']['limit']['context'] '重跑會覆寫成新的上下文'
 Assert-Equal 1 $out2['provider']['ollama']['models'].Count '重跑不會產生重複模型項目'
-Assert-Equal 2 (Get-ChildItem $tmpDir -Filter 'opencode.json.bak-*').Count '同一秒內重跑不會覆蓋前一份備份'
+Assert-Equal 2 @(Get-ChildItem $tmpDir -Filter 'opencode.json.bak-*').Count '同一秒內重跑不會覆蓋前一份備份'
 
 Remove-Item $tmpDir -Recurse -Force
 
@@ -236,7 +222,7 @@ Remove-Item $tmpDir -Recurse -Force
 
 Write-Host "`n[8] opencode.json / opencode.jsonc 並存" -ForegroundColor Cyan
 
-$dualDir = Join-Path ([System.IO.Path]::GetTempPath()) "gemma-dual-$(Get-Random)"
+$dualDir = Join-Path ([System.IO.Path]::GetTempPath()) "local-llm-dual-$(Get-Random)"
 New-Item -ItemType Directory -Path $dualDir -Force | Out-Null
 $dualJson  = Join-Path $dualDir 'opencode.json'
 $dualJsonc = Join-Path $dualDir 'opencode.jsonc'
@@ -278,12 +264,12 @@ Assert-Equal 2 $explicit.Present.Count                    '明確指定路徑時
 # 壞掉的設定檔不該讓整支腳本炸掉
 $brokenPath = Join-Path $dualDir 'broken.json'
 [System.IO.File]::WriteAllText($brokenPath, '{ this is not json', (New-Object System.Text.UTF8Encoding($false)))
-$broken = Read-OpenCodeConfig -Path $brokenPath
+$broken = Read-OpenCodeConfig -Path $brokenPath 6>$null
 Assert-Equal 0 $broken.Count                              '壞掉的設定檔回空表而不是丟例外'
 Assert-Equal 0 (Read-OpenCodeConfig -Path (Join-Path $dualDir 'nope.json')).Count '不存在的設定檔回空表'
 
 # 寫入 .jsonc 後，註解確實不見了（這正是建議統一用 .json 的理由）
-Update-OpenCodeConfig -Path $dualJsonc -Tag 'gemma4:e4b-it-qat' -Ctx 32768 | Out-Null
+Update-OpenCodeConfig -Path $dualJsonc -Tag 'gemma4:e4b-it-qat' -Ctx 32768 6>$null | Out-Null
 $afterWrite = Get-Content $dualJsonc -Raw -Encoding UTF8
                                                           # 不能用 '//' 判斷 — baseURL 的 http:// 也會中
 Assert-True ($afterWrite -notmatch '舊設定')              '寫入 .jsonc 後註解會被 ConvertTo-Json 清掉'
@@ -373,13 +359,4 @@ Assert-True ([bool] $logDir) 'Get-OllamaLogDir 有回傳路徑'
 if ($IsWindows) { Assert-True ($logDir -match 'Ollama')        'Windows 的 log 目錄指向 Ollama' }
 else            { Assert-True ($logDir -match '\.ollama/logs') 'macOS 的 log 目錄指向 ~/.ollama/logs' }
 
-# ---- 結果 ---------------------------------------------------------------
-
-Write-Host ''
-if ($script:Fail -eq 0) {
-    Write-Host "全部通過：$script:Pass 項" -ForegroundColor Green
-    exit 0
-} else {
-    Write-Host "通過 $script:Pass 項，失敗 $script:Fail 項" -ForegroundColor Red
-    exit 1
-}
+Complete-Test

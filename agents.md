@@ -1,19 +1,24 @@
-# agent-gemma（專案藍圖）
+# agent-local-llm（專案藍圖）
 
 > 本檔為跨 Agent 通用的專案藍圖（AGENTS.md 開放標準）。任何 Agent 的每個 session 都應先讀本檔＋`handoff.md`。
 > Claude Code 不讀 `agents.md`，改由 `CLAUDE.md` 的 `@agents.md` import 本檔；Claude 專屬規範寫在 `CLAUDE.md`。
 
 ## 專案簡介
 
-讓 OpenCode 能呼叫本機的 Google Gemma（透過 Ollama）。核心產出是一支 PowerShell 7 腳本，在一台全新的 Windows 電腦上完成：偵測顯示卡 → 依 VRAM 選出跑得動的 Gemma 版本 → 安裝 Ollama → 下載模型 → 設定上下文長度 → 寫入 `opencode.json` → 實際送訊息驗證。
+讓 OpenCode 能呼叫本機大模型（透過 Ollama）。產出是兩個 OpenCode 專案技能，加上一個共用的 PowerShell 7 函式庫：
+
+- **`local-llm-setup`**：一台電腦做一次。偵測顯示卡 → 依 VRAM 選出跑得動的 Gemma 版本 → 安裝 Ollama → 下載模型 → 設定全域上下文長度 → 寫入 `opencode.json` → 實際送訊息驗證 → 比對 server log 確認上下文真的生效。`-Check` 檢查現況。
+- **`local-llm-model`**：一直重複做。加入 Ollama registry 上任何模型、用 Modelfile 給它專屬上下文、量速度與 CPU/GPU 分配、刪乾淨。
+
+專案原名 `agent-gemma`，只接 Gemma。2026-09-11 為了試跑 `qwen3.8:27b` 改名並拆技能，見下方「為什麼拆成兩個技能」。
 
 ## 同步層級
 
 | 層級 | 位置 | 用途 |
 |------|------|------|
-| L1 本地 | `我的雲端硬碟/agents/agent-gemma`（GDrive 同步） | `agents.md` 藍圖＋`handoff.md` 交接＋`CLAUDE.md` 橋接 |
-| L2 GitHub | [changyiwu/agent-gemma](https://github.com/changyiwu/agent-gemma)（**公開**） | 版本控制與雲端備份（`handoff.md` 不進 repo） |
-| L3 Obsidian | vault 內 `agent-gemma/專案工作流程.md` | 詳細脈絡、決策紀錄、踩坑筆記、更動紀錄 |
+| L1 本地 | `我的雲端硬碟/agents/agent-local-llm`（GDrive 同步） | `agents.md` 藍圖＋`handoff.md` 交接＋`CLAUDE.md` 橋接 |
+| L2 GitHub | [changyiwu/agent-local-llm](https://github.com/changyiwu/agent-local-llm)（**公開**；舊網址 `agent-gemma` 由 GitHub 自動轉址） | 版本控制與雲端備份（`handoff.md` 不進 repo） |
+| L3 Obsidian | vault 內 `agent-local-llm/專案工作流程.md` | 詳細脈絡、決策紀錄、踩坑筆記、更動紀錄 |
 
 ## 關鍵時程
 
@@ -32,18 +37,29 @@
 - [~] 階段九：驗證 24GB 以上那幾階的選型。**已在 16GB 卡上用 CPU offload 實測 MoE 與 31B 密集**：`gemma4:26b-a4b-it-qat` 更快但沒有更會自我檢查（見下方「MoE 實測」）；`gemma4:31b-it-qat` 57% 掉到 CPU、只剩 3.9 tok/s，能力也沒有明顯勝過 12B（見「31B 密集模型實測」）。**尚缺**：24GB 卡全 GPU 的表現、Apple Silicon 路徑（併入階段八）
 - [x] 階段十：讓腳本處理 `opencode.jsonc`（盤點 `.json`／`.jsonc` 並存、`-Check` 兩份都讀並揪出死項目、寫入前警告重複的 provider 定義）；測試 59 → 72 項
 - [x] 階段十一：揪出 Ollama 桌面 app 的 GUI 設定覆蓋 `OLLAMA_CONTEXT_LENGTH`（腳本比對 server log 的實際注入值，不一致就報警並給修法）；測試 72 → 89 項
+- [x] 階段十二：專案改名 `agent-local-llm`，技能依任務拆成 `local-llm-setup`／`local-llm-model`，共用函式抽成 `.opencode/lib/LocalLlm.ps1`；新增 `-Add`／`-Bench`／`-Remove`／`-List`，`-Check` 改成逐顆比對 `limit.context` 與實際上下文；測試 89 → 187 項並全開 StrictMode；在 `NB-YI` 用真的 Ollama 跑過 `-Add`（含衍生模型）→ `-List` → `-Remove` 全流程
+- [ ] 階段十三：在 `PC-YI-SL` 試跑 `qwen3.8:27b`（`manage-model.ps1 -Add qwen3.8:27b -Context 32768`），和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」
 
 技能刻意**不**同步到全域技能目錄，見下方「技術決策」。
 
 ## 資料夾結構
 
 ```text
-agent-gemma/
-├── .opencode/skills/gemma-setup/   # OpenCode 專案技能（不裝到全域）
-│   ├── SKILL.md                    # 觸發條件與 Agent 執行流程
-│   └── setup-gemma.ps1             # 偵測、安裝、設定、驗證的主腳本
+agent-local-llm/
+├── .opencode/
+│   ├── lib/
+│   │   └── LocalLlm.ps1              # 兩個技能共用的函式庫（dot-source，不是模組）
+│   └── skills/                       # OpenCode 專案技能（不裝到全域）
+│       ├── local-llm-setup/
+│       │   ├── SKILL.md
+│       │   └── setup-local-llm.ps1   # 新電腦設定、-Plan、-Check
+│       └── local-llm-model/
+│           ├── SKILL.md
+│           └── manage-model.ps1      # -List / -Add / -Bench / -Remove
 ├── tests/
-│   └── test-setup-gemma.ps1
+│   ├── assert.ps1                    # 兩支測試共用的斷言
+│   ├── test-local-llm-setup.ps1
+│   └── test-local-llm-model.ps1
 ├── agents.md              # 跨 Agent 專案藍圖
 ├── handoff.md             # 跨工作階段交接（本機檔，git 不追蹤，靠 GDrive 同步）
 ├── CLAUDE.md              # Claude Code 橋接
@@ -54,6 +70,45 @@ agent-gemma/
 ```
 
 ## 技術決策與理由
+
+**為什麼拆成兩個技能（2026-09-11）**
+原本的 `gemma-setup` 混了兩件頻率完全不同的事：「一台電腦做一次」的環境設定（裝 Ollama、全域上下文、GUI 覆蓋、`-Check`），和「會一直重複」的模型管理（拉新模型、給它專屬上下文、試跑、刪掉）。後者之前沒有工具：刪 31B 要手動 `ollama rm` 再手改 `opencode.json`，試跑大模型要手寫 Modelfile。要試 `qwen3.8:27b` 時這個缺口就藏不住了。
+
+依任務拆，不依模型家族拆。拆成 gemma／qwen 兩個技能的話，安裝、設定合併、log 比對全要複製一份，而兩家模型在這些步驟上沒有任何差異。
+
+**共用函式庫用 dot-source 的 `.ps1`，不用 `.psm1` 模組**
+模組有自己的作用域，裡面的函式讀不到呼叫端腳本的 `$Yes`、`$SkipInstall` 這類參數。改成模組的話，`Confirm-Step` 等函式都得多傳參數，行為也可能跟著變。`LocalLlm.ps1` 只定義常數與函式、不執行任何流程，所以測試能直接 dot-source；主腳本有主流程，測試仍用 AST 抽函式。
+
+函式庫放在 `.opencode/lib/`，不放在任一技能資料夾裡。兩個技能地位對等，放進其中一個會讓另一個看起來依賴它。代價是技能資料夾不能單獨複製出去用，腳本找不到函式庫時會直接說明這件事。
+
+**自動選型仍然只選 Gemma**
+改名後 `local-llm-setup` 的 `$GpuProfiles` 還是全 Gemma。只有它在本專案實測過，沒實測的東西不讓腳本自動選中（跟 MLX tag 不進 `$MacProfiles` 同一條原則）。其他家族用 `local-llm-model -Add` 手動加入；哪天某一家實測夠多，再考慮進選型表。
+
+**OpenCode 的能力旗標改成讀 `/api/show` 的 `capabilities`**
+以前寫死 `tool_call`／`reasoning`／`attachment` 全開，對 Gemma 4 剛好正確。換成別家模型就不一定：對不支援圖片的模型開 `attachment`、對不會 thinking 的模型開 `reasoning`，OpenCode 都會照送，出錯時看不出原因。現在依 `tools`／`thinking`／`vision` 設定；讀不到（舊版 Ollama）時只開 `tool_call`。Ollama 0.34 上 `gemma4:e4b-it-qat` 回報的是 `completion, vision, audio, tools, thinking`。
+
+模型不支援 `tools` 時 `-Add` 會警告。那種模型在 OpenCode 裡只能聊天，不能跑 agent。
+
+**衍生模型的命名 `<tag>-ctx<k>` 是 `-Remove` 的依據**
+`-Add qwen3.8:27b -Context 32768` 建出 `qwen3.8:27b-ctx32k`，沿用 `PC-YI-FY` 上既有的 `gemma4:12b-ctx16k`。`-Remove` 靠 `^<tag>-ctx\d+k?$` 找出衍生模型一起刪（衍生模型共用權重 blob，只刪原模型不會釋出空間）。正則必須綁「`-ctx` 加數字」：刪 `gemma4:12b` 不能順手把 `gemma4:12b-it-qat` 也刪掉，測試裡刻意放了這個誘餌。
+
+有沒有釘住上下文，看 `/api/show` 的 `parameters` 裡有沒有 `num_ctx` 那一行（純文字、以空白對齊；沒設參數的模型連 `parameters` 欄位都沒有）。`-Check` 與 `-List` 用它判斷每顆模型實際會載入多少上下文：有 `num_ctx` 看它，沒有就看全域值。
+
+**`limit.context` 大於實際上下文要報警，反過來不用**
+全域值與 Modelfile 並存後，兩邊對不上的機會變多了。`limit.context` 比實際大時，OpenCode 以為還有空間而繼續塞，Ollama 卻只載入較小的值，前文會被悄悄截掉，而且沒有任何錯誤訊息。比實際小只是 OpenCode 提早壓縮對話，浪費一點空間但不會出錯。
+
+**`-Bench` 的量法**
+走原生 `/api/generate`、`think=false`、`num_predict=300`，這就是前面 31B 那組 3.9 tok/s 的量法，新數字可以直接跟舊的比。**刻意不帶 `options.num_ctx`**：要量的是 OpenCode 實際會拿到的上下文，自己帶會讓 Ollama 用另一組設定重新載入。`think` 只對回報 `thinking` 能力的模型帶。
+
+分配讀 `/api/ps` 的 `size_vram / size`，算法和 `ollama ps` 的 PROCESSOR 欄一樣。`/api/ps` 在 0.34 有 `context_length` 欄位，舊版不一定有，所以一律用 `Get-JsonProp` 讀。量測前有別的模型載入中就先問要不要卸載，這是 `PC-YI-SL` 上 31B 把 12B 擠到 CPU 的教訓。
+
+**下載前查 registry 的大小與磁碟空間**
+`-Add` 會先抓 `https://registry.ollama.ai/v2/<namespace>/<name>/manifests/<tag>`（`Accept: application/vnd.docker.distribution.manifest.v2+json`），加總 layers 與 config 的 `size`，就是 `ollama pull` 要下載的量。`qwen3.8:27b` 是 16.52 GiB（網頁寫 18GB，十進位），`gemma4:12b` 是 7.04 GiB，和選型表的 7.6 GB 對得上。`hf.co/...` 這類別家 registry 不查。
+
+有了大小就能在下載前預告「權重大於可用顯存，一定會 offload」，並比對模型存放處的剩餘空間。這只是粗估，因為下載大小不等於顯存佔用（見下方 e4b 那條），實際分配以 `-Bench` 量到的為準。
+
+**腳本全面開 StrictMode，讀 API 回應一律走 `Get-JsonProp`**
+舊的 `Test-Setup` 直接讀 `$choice.message.reasoning`。Gemma 4 會 thinking 所以一直沒出事，換成不會 thinking 的模型，StrictMode 下讀不存在的屬性會直接丟例外。Ollama 各版本、各模型的回應欄位本來就不一致，所以抽成 `Get-JsonProp`，測試也改成在 StrictMode 下跑，才抓得到這類只在實機才炸的錯。
 
 **為什麼上下文要在兩個地方各設一次**
 Ollama 0.30 之後，`OLLAMA_CONTEXT_LENGTH` 未設定時是「依 VRAM 動態決定」：未滿 23 GB 只給 4096，23 GB 以上 32768，47 GB 以上 262144。OpenCode 端的 `limit.context` 只影響 OpenCode 自己怎麼切對話，不會改變 Ollama 實際載入的上下文。兩邊都要設。
@@ -97,6 +152,12 @@ OpenCode 的 `provider.<id>.models.<tag>` schema 只認 `limit: { context, outpu
 在 RTX 5060 **Laptop** GPU 8GB 上跑 `gemma4:e4b-it-qat`：`ollama ps` 顯示 CONTEXT 32768、100% GPU，載入只佔 3.1 GB，留約 4.9 GB 餘裕。這台同時有 AMD Radeon 610M 內顯（0.5 GB），顯卡篩選規則正確挑到 NVIDIA 那張，沒被內顯干擾。餘裕看起來還能往上調上下文，但沒實測過更高值，維持 32768。
 
 （當時記的「`OLLAMA_CONTEXT_LENGTH` 進場前就已是 32768、來源不明」已經查明是桌面 app 的 GUI 預設值，見上面那一段。這台之所以矇混過關，是因為腳本判定「已是目標值」就沒改也沒重啟 —— 剛好等於 8GB 這階的建議值。）
+
+2026-09-11 在 `NB-YI` 用改名後的腳本跑 `-Check`（Ollama 0.34.0）：環境變數、server log 實際注入值、`opencode.json` 三處都是 32768，沒有警告。**但這個結果分不出 GUI 設定有沒有改過** —— 環境變數與 GUI 出廠預設剛好都是 32768，蓋不蓋都一樣。要確認只能到桌面 app 的 Settings 看，或暫時把環境變數改成別的值再看 log。
+
+同一天用 `manage-model.ps1 -Add gemma4:e4b-it-qat -Context 16384` 做端到端驗證：衍生模型 `gemma4:e4b-it-qat-ctx16k` 載入後 `ollama ps` 為 100% GPU、CONTEXT 16384（蓋過全域 32768），`-Bench` 量到生成 64.9 tok/s、讀提示 174.7 tok/s。驗證完已用 `-Remove` 刪掉衍生模型，原模型不受影響。
+
+同一台稍早用原生 API 冷載入同一顆模型時，第一次只量到 1.65 tok/s（載入 84 秒）。之後同樣條件量到 64.9，差 40 倍。推測第一次是筆電 GPU 還沒從省電狀態醒來，但沒有深究。**筆電量速度要接電源，且丟掉冷載入後的第一個數字**。
 
 **16GB 那階的 10291 MiB 已在第二台機器重現**
 `PC-YI-FY`（RTX 5060 Ti 16GB）用 `nvidia-smi` 取載入前後差值，131072 下實佔 **10288 MiB**，與桌機首次實測的 10291 MiB 只差 3 MiB。這一階的數字可以當定論用。
@@ -194,7 +255,7 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 也就是說，失敗主要發生在「搜尋」這一步，而不是「判斷」。實務上值得在專案 `AGENTS.md` 寫明「搜尋名稱時不分大小寫」—— 這條還沒實測效果。
 
 **技能放專案層級，不進全域**
-路徑是 `.opencode/skills/gemma-setup/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `sync-skills`：這個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。
+路徑是 `.opencode/skills/local-llm-setup/` 與 `.opencode/skills/local-llm-model/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `sync-skills`：兩個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。而且它們依賴專案裡的 `.opencode/lib/LocalLlm.ps1`，單獨複製出去也跑不起來。
 
 **macOS 只支援 Apple Silicon**
 Intel Mac 沒有 Ollama 可用的 GPU 加速（Metal 後端只對 Apple Silicon 有效），純 CPU 跑 12B 不堪用。腳本在 `Get-MacHardware` 用 `uname -m` 檢查，不是 arm64 就直接 throw 並說明原因，而不是讓使用者下載完 7.6GB 才發現跑不動。
@@ -288,10 +349,20 @@ Windows 上 `opencode.exe`（CLI）與 `OpenCode.exe`（桌面 app）在 WMI 查
 ## 測試
 
 ```powershell
-pwsh -NoProfile -File .\tests\test-setup-gemma.ps1
+pwsh -NoProfile -File .\tests\test-local-llm-setup.ps1
+pwsh -NoProfile -File .\tests\test-local-llm-model.ps1
 ```
 
-隔離測試 89 項：不連網、不安裝、不下載模型、不動使用者環境變數、不碰真正的 `opencode.json`。做法是用 AST 把腳本裡的函式抽出來單獨定義，避開主流程。涵蓋語法／編碼、Windows 與 Apple Silicon 兩條選型路徑、顯卡篩選規則、LaunchAgent 的 plist 是否為合法 XML、設定合併與備份、`.json`／`.jsonc` 並存時的解析與寫入目標，以及 server log 的上下文解析與不一致偵測。
+隔離測試共 187 項（setup 101 ＋ model 86）：不連網、不安裝、不下載模型、不建立或刪除模型、不動使用者環境變數、不碰真正的 `opencode.json`。改到 `.opencode/lib/LocalLlm.ps1` 時兩支都要跑。
+
+兩支都在 `Set-StrictMode -Version Latest` 下跑，和腳本本身一致。共用函式庫直接 dot-source；主腳本用 AST 抽函式。`$GpuProfiles`／`$CpuProfiles` 也從 AST 抽賦值敘述，不在測試裡另抄一份，免得抄的那份和腳本漂移了測試照樣會過。顯卡篩選也改成直接測腳本實際呼叫的 `Select-UsableGpu`，理由相同。斷言工具與「dot-source 路徑指得到檔案」的檢查放在 `tests/assert.ps1`。
+
+- **setup**：語法／編碼、Windows 與 Apple Silicon 兩條選型路徑、顯卡篩選規則、LaunchAgent 的 plist 是否為合法 XML、設定合併與備份（含能力旗標）、`.json`／`.jsonc` 並存時的解析與寫入目標、server log 的上下文解析與不一致偵測。
+- **model**：參數組（`-Context` 只能配 `-Add`）、tag 正規化與 registry 網址、衍生模型命名與 `num_ctx` 解析、能力旗標、速度與分配換算、顯存粗估、`limit.context` 比對、移除目標挑選（含同前綴誘餌）、設定移除與 `model`／`agent.*.model` 殘留、API 欄位缺漏。
+
+會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 `NB-YI` 用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。
+
+StrictMode 下 `[xml]` 物件要從 `DocumentElement` 往下取：plist 帶 DOCTYPE，`$doc.plist` 會同時對到 DOCTYPE 節點與根元素，再取 `.dict` 就丟例外。
 
 log 解析那組測試用**假的 log 文字**餵 `Read-ContextFromLogText`，不碰真的檔案；不一致偵測則在區塊內重新定義 `Write-Warn2`／`Get-OllamaRuntimeContext` 之類的相依函式來攔輸出，所以在沒裝 Ollama 的機器上也跑得完。誘餌案例（`default_num_ctx=4096`）刻意保留，避免哪天正則放寬成 `\d+` 又抓錯數字。
 
@@ -300,6 +371,8 @@ macOS 的實際系統呼叫（`launchctl`、`osascript`、`brew`）在 Windows �
 ## 對外相依
 
 - Ollama（winget id `Ollama.Ollama`）
-- Ollama registry 的 `gemma4` / `gemma3` tag
+- Ollama registry 的 `gemma4` / `gemma3` tag（自動選型）；其他模型由使用者用 `-Add` 指定
+- Ollama registry 的 manifest API（`registry.ollama.ai/v2/.../manifests/<tag>`，下載前查大小；非官方 API，查不到時腳本照常下載）
+- Ollama 本機 API：`/api/tags`、`/api/show`（`capabilities`、`parameters`）、`/api/ps`（`size_vram`、`context_length`）、`/api/generate`
 - OpenCode 設定 schema：<https://opencode.ai/config.json>
 - OpenCode 的 Ollama 接法需要 `@ai-sdk/openai-compatible`（OpenCode 沒有內建 ollama provider）
