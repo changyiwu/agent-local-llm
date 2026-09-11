@@ -540,6 +540,18 @@ function Get-LoadedModels {
     })
 }
 
+function Format-LoadedModelLines {
+    <#  -Check 與 -List 共用的「已載入的模型」段落。沒有載入中的模型時明講「無」，
+        不印 ollama ps 那種只有表頭的空表。 #>
+    param([object[]] $Models)
+    $items = @(@($Models) | Where-Object { $_ })
+    if ($items.Count -eq 0) { return @('已載入的模型：無') }
+    return @('已載入的模型：') + @($items | ForEach-Object {
+        $ctx = if ($_.Context) { "上下文 $($_.Context)" } else { '上下文未知' }
+        "  $($_.Name)　$($_.Processor)　$ctx"
+    })
+}
+
 function Clear-OtherLoadedModels {
     <#  別的模型佔著顯存時，量到的 CPU/GPU 分配與速度都不準。
         PC-YI-SL 就踩過：31B 沒卸載，12B 被擠到部分 CPU。 #>
@@ -581,6 +593,20 @@ function ConvertTo-SpeedResult {
         LoadSec    = [math]::Round($loadNs / 1e9, 1)
         DoneReason = [string](Get-JsonProp $Response 'done_reason')
     }
+}
+
+function Test-ColdRun {
+    <#  這次量測有沒有包含載入模型。冷載入後第一次的數字偏低，不能當結果：
+        PC-YI-FY 上 gemma4:12b 冷載入那次 28.1 tok/s、之後 45.7 與 47.9；NB-YI 上差到 40 倍。 #>
+    param($Result)
+    return ($null -ne $Result -and $Result.LoadSec -ge 1)
+}
+
+function Get-AverageEvalTps {
+    param([object[]] $Results)
+    $tps = @(@($Results) | Where-Object { $_ -and $null -ne $_.EvalTps } | ForEach-Object EvalTps)
+    if ($tps.Count -eq 0) { return $null }
+    return [math]::Round(($tps | Measure-Object -Average).Average, 1)
 }
 
 function Measure-ModelSpeed {

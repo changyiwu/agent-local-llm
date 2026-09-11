@@ -38,7 +38,7 @@
 - [x] 階段十：讓腳本處理 `opencode.jsonc`（盤點 `.json`／`.jsonc` 並存、`-Check` 兩份都讀並揪出死項目、寫入前警告重複的 provider 定義）；測試 59 → 72 項
 - [x] 階段十一：揪出 Ollama 桌面 app 的 GUI 設定覆蓋 `OLLAMA_CONTEXT_LENGTH`（腳本比對 server log 的實際注入值，不一致就報警並給修法）；測試 72 → 89 項
 - [x] 階段十二：專案改名 `agent-local-llm`，技能依任務拆成 `local-llm-setup`／`local-llm-model`，共用函式抽成 `.opencode/lib/LocalLlm.ps1`；新增 `-Add`／`-Bench`／`-Remove`／`-List`，`-Check` 改成逐顆比對 `limit.context` 與實際上下文；測試 89 → 187 項並全開 StrictMode；在 `NB-YI` 用真的 Ollama 跑過 `-Add`（含衍生模型）→ `-List` → `-Remove` 全流程
-- [ ] 階段十三：在 `PC-YI-SL` 試跑 `qwen3.8:27b`（`manage-model.ps1 -Add qwen3.8:27b -Context 32768`），和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」
+- [~] 階段十三：試跑 `qwen3.8:27b`，和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」。**已在 `PC-YI-FY` 用 `-Add qwen3.8:27b -Context 32768` 完成下載、設定與量速度**（39%/61% CPU/GPU、7.0 tok/s，見「`qwen3.8:27b` 實測速度」）；**尚缺**：timeout 沙盒的 agent 表現比較
 
 技能刻意**不**同步到全域技能目錄，見下方「技術決策」。
 
@@ -101,6 +101,8 @@ agent-local-llm/
 走原生 `/api/generate`、`think=false`、`num_predict=300`，這就是前面 31B 那組 3.9 tok/s 的量法，新數字可以直接跟舊的比。**刻意不帶 `options.num_ctx`**：要量的是 OpenCode 實際會拿到的上下文，自己帶會讓 Ollama 用另一組設定重新載入。`think` 只對回報 `thinking` 能力的模型帶。
 
 分配讀 `/api/ps` 的 `size_vram / size`，算法和 `ollama ps` 的 PROCESSOR 欄一樣。`/api/ps` 在 0.34 有 `context_length` 欄位，舊版不一定有，所以一律用 `Get-JsonProp` 讀。量測前有別的模型載入中就先問要不要卸載，這是 `PC-YI-SL` 上 31B 把 12B 擠到 CPU 的教訓。
+
+**冷載入那次不列入（2026-09-12 加入）。** 回應的 `load_duration` 滿 1 秒就算冷載入，標成暖機、另外補量一次，`-Runs` 因此是有效次數。只丟一次：模型每次都重新載入時（例如 keep-alive 太短）照樣列入並註明，不會無限重量。起因是 `PC-YI-FY` 上 `gemma4:12b` 冷載入那次只有 28.1 tok/s（載入 37.8 秒、讀提示 1.5 tok/s），之後是 45.7 與 47.9。**桌機也會這樣**，不只是 `NB-YI` 那種筆電省電狀態。同一批權重的 `gemma4:12b-ctx16k` 緊接著量，只花 3.4 秒載入，第一次就是 45.8，看起來拖慢的主要是從磁碟讀權重，但沒有驗證。代價是那種情況也會多量一次。
 
 **下載前查 registry 的大小與磁碟空間**
 `-Add` 會先抓 `https://registry.ollama.ai/v2/<namespace>/<name>/manifests/<tag>`（`Accept: application/vnd.docker.distribution.manifest.v2+json`），加總 layers 與 config 的 `size`，就是 `ollama pull` 要下載的量。`qwen3.8:27b` 是 16.52 GiB（網頁寫 18GB，十進位），`gemma4:12b` 是 7.04 GiB，和選型表的 7.6 GB 對得上。`hf.co/...` 這類別家 registry 不查。
@@ -254,6 +256,19 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 
 也就是說，失敗主要發生在「搜尋」這一步，而不是「判斷」。實務上值得在專案 `AGENTS.md` 寫明「搜尋名稱時不分大小寫」—— 這條還沒實測效果。
 
+**`qwen3.8:27b` 實測速度：比 31B 快近一倍，但仍是 12B 的七分之一（2026-09-12，PC-YI-FY）**
+和 `PC-YI-SL` 同規格（RTX 5060 Ti 16GB、61.7 GB 記憶體），Ollama 0.34.0。用 `manage-model.ps1 -Add qwen3.8:27b -Context 32768` 一次跑完：registry 查到 17.7 GB、評估段落預告「權重 16.5 GB 大於可用顯存 15.9 GB，一定 offload」、下載、建 `qwen3.8:27b-ctx32k`、寫進 `opencode.json`、測試訊息、量速度。`/api/show` 回報的能力是 `completion, vision, tools, thinking`，OpenCode 三個旗標都開。
+
+| 模型 | 上下文 | 分配 | 生成速度 |
+|---|---|---|---|
+| `gemma4:12b` | 131072 | 100% GPU | 45.7–47.9 tok/s |
+| `gemma4:12b-ctx16k` | 16384 | 100% GPU | 45.3–46.8 tok/s |
+| `qwen3.8:27b-ctx32k` | 32768 | **39%/61% CPU/GPU**（`ollama ps` 的 SIZE 19 GB） | **6.9–7.0 tok/s** |
+
+12B 那兩列是同一天、同一台用 `-Bench` 量的，第一列的數字已經丟掉冷載入那次。它比 README 記的 38.8 tok/s 快約兩成，但 38.8 是 Ollama 0.32 時量的，量法也沒記下來，所以不能把差距歸給版本。**同一批權重，上下文 131K 和 16K 生成速度一樣**，符合 Gemma 的 KV cache 幾乎不隨上下文成長。
+
+Qwen 27B 掉到 CPU 的比例（39%）比 31B（57%）少，速度也快了近一倍（7.0 對 3.9）。但兩者的上下文不同（32768 對 131072），而且不是同一台機器，所以不能說成是模型本身比較快。每輪 agent 任務大概要好幾分鐘，實際能不能用還沒驗證。讀提示速度第一次 23.7、第二次 113.9，差這麼多可能是第二次的提示命中了快取，沒有深究。
+
 **技能放專案層級，不進全域**
 路徑是 `.opencode/skills/local-llm-setup/` 與 `.opencode/skills/local-llm-model/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `sync-skills`：兩個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。而且它們依賴專案裡的 `.opencode/lib/LocalLlm.ps1`，單獨複製出去也跑不起來。
 
@@ -353,12 +368,12 @@ pwsh -NoProfile -File .\tests\test-local-llm-setup.ps1
 pwsh -NoProfile -File .\tests\test-local-llm-model.ps1
 ```
 
-隔離測試共 187 項（setup 101 ＋ model 86）：不連網、不安裝、不下載模型、不建立或刪除模型、不動使用者環境變數、不碰真正的 `opencode.json`。改到 `.opencode/lib/LocalLlm.ps1` 時兩支都要跑。
+隔離測試共 203 項（setup 104 ＋ model 99）：不連網、不安裝、不下載模型、不建立或刪除模型、不動使用者環境變數、不碰真正的 `opencode.json`。改到 `.opencode/lib/LocalLlm.ps1` 時兩支都要跑。
 
 兩支都在 `Set-StrictMode -Version Latest` 下跑，和腳本本身一致。共用函式庫直接 dot-source；主腳本用 AST 抽函式。`$GpuProfiles`／`$CpuProfiles` 也從 AST 抽賦值敘述，不在測試裡另抄一份，免得抄的那份和腳本漂移了測試照樣會過。顯卡篩選也改成直接測腳本實際呼叫的 `Select-UsableGpu`，理由相同。斷言工具與「dot-source 路徑指得到檔案」的檢查放在 `tests/assert.ps1`。
 
 - **setup**：語法／編碼、Windows 與 Apple Silicon 兩條選型路徑、顯卡篩選規則、LaunchAgent 的 plist 是否為合法 XML、設定合併與備份（含能力旗標）、`.json`／`.jsonc` 並存時的解析與寫入目標、server log 的上下文解析與不一致偵測。
-- **model**：參數組（`-Context` 只能配 `-Add`）、tag 正規化與 registry 網址、衍生模型命名與 `num_ctx` 解析、能力旗標、速度與分配換算、顯存粗估、`limit.context` 比對、移除目標挑選（含同前綴誘餌）、設定移除與 `model`／`agent.*.model` 殘留、API 欄位缺漏。
+- **model**：參數組（`-Context` 只能配 `-Add`）、tag 正規化與 registry 網址、衍生模型命名與 `num_ctx` 解析、能力旗標、速度與分配換算、冷載入判斷與平均、已載入模型的段落、顯存粗估、`limit.context` 比對、移除目標挑選（含同前綴誘餌）、設定移除與 `model`／`agent.*.model` 殘留、API 欄位缺漏。
 
 會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 `NB-YI` 用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。
 

@@ -359,4 +359,16 @@ Assert-True ([bool] $logDir) 'Get-OllamaLogDir 有回傳路徑'
 if ($IsWindows) { Assert-True ($logDir -match 'Ollama')        'Windows 的 log 目錄指向 Ollama' }
 else            { Assert-True ($logDir -match '\.ollama/logs') 'macOS 的 log 目錄指向 ~/.ollama/logs' }
 
+# ---- -Check 的已載入模型 ------------------------------------------------
+
+Write-Host "`n[10] -Check 列已載入的模型" -ForegroundColor Cyan
+
+# 段落格式由共用的 Format-LoadedModelLines 決定（測在 test-local-llm-model.ps1），這裡只確認 -Check 有用它。
+# 以前直接轉印 ollama ps，沒有模型載入時只剩一行表頭。
+$showStatus = @($funcs | Where-Object { $_.Name -eq 'Show-Status' })[0].Extent.Text
+Assert-True ($showStatus -match 'Format-LoadedModelLines') '-Check 用共用函式列已載入的模型'
+Assert-True ($showStatus -notmatch 'ollama ps')             '-Check 不再直接轉印 ollama ps'
+$none = @(Format-LoadedModelLines -Models @())
+Assert-Equal '已載入的模型：無' $none[0] '沒有載入中的模型時明講「無」'
+
 Complete-Test

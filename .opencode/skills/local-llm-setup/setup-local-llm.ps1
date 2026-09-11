@@ -287,8 +287,7 @@ function Show-Status {
     Write-ModelInventory -ConfigPath $ConfigPath -Explicit $ConfigPathExplicit
 
     if (Test-OllamaUp) {
-        Write-Info '已載入的模型：'
-        & ollama ps | ForEach-Object { Write-Host "     $_" -ForegroundColor Gray }
+        Format-LoadedModelLines -Models (Get-LoadedModels) | ForEach-Object { Write-Info $_ }
     }
 }
 

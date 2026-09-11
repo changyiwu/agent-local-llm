@@ -65,12 +65,14 @@ pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Bench qwen3.8:27b
 
 開始前若有別的模型載入中，腳本會問要不要先卸載。**建議卸載**，佔著顯存的模型會讓分配與速度都失真。
 
+模型原本沒載入時，第一次量測會包含載入，數字偏低（16GB 卡上 `gemma4:12b` 冷載入那次 28.1 tok/s，之後 46–48）。腳本把那次標成「暖機」、不列入，另外補量一次，所以 `-Runs` 指的是有效次數。回報時用「第 N 次」與平均那幾行，不要用暖機的數字。
+
 量完回報給使用者時整理成表：
 
 | 模型 | 分配 | 上下文 | 生成速度 | 讀提示速度 |
 |---|---|---|---|---|
 
-在 agent-local-llm 專案裡量的數字，要記進 `agents.md` 的技術決策（附機器名與日期）。本專案已知的參照點：16GB 卡上 `gemma4:12b` 100% GPU 38.8 tok/s、`gemma4:26b-a4b-it-qat` 31%/69% CPU/GPU 49.8 tok/s、`gemma4:31b-it-qat` 57%/43% CPU/GPU 3.9 tok/s。
+在 agent-local-llm 專案裡量的數字，要記進 `agents.md` 的技術決策（附機器名與日期）。本專案已知的參照點：16GB 卡上 `gemma4:12b` 100% GPU 38.8 tok/s、`gemma4:26b-a4b-it-qat` 31%/69% CPU/GPU 49.8 tok/s、`gemma4:31b-it-qat` 57%/43% CPU/GPU 3.9 tok/s、`qwen3.8:27b-ctx32k` 39%/61% CPU/GPU 7.0 tok/s。
 
 ### 移除
 

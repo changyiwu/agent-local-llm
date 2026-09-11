@@ -126,6 +126,34 @@ Assert-Equal 'length' $speed.DoneReason 'done_reason 照帶'
 $empty = ConvertTo-SpeedResult -Response ([pscustomobject]@{ done = $true })
 Assert-True ($null -eq $empty.EvalTps) '回應缺欄位時不丟例外、速度回 $null'
 
+# 暖機判斷：PC-YI-FY 上 gemma4:12b 冷載入那次 28.1 tok/s（載入 37.8 秒），之後 45.7 與 47.9
+Assert-True  (Test-ColdRun $speed)                                  '包含載入的那次算冷載入'
+Assert-True  (-not (Test-ColdRun ([pscustomobject]@{ LoadSec = 0.1 }))) '模型已在顯存時不算冷載入'
+Assert-True  (-not (Test-ColdRun ([pscustomobject]@{ LoadSec = 0 })))   '缺 load_duration 換算成 0 時不算冷載入'
+Assert-True  (-not (Test-ColdRun $null))                            '量測失敗（$null）時不算冷載入'
+
+$warm = @(
+    [pscustomobject]@{ EvalTps = 45.7; LoadSec = 0 },
+    [pscustomobject]@{ EvalTps = 47.9; LoadSec = 0 }
+)
+Assert-Equal 46.8 (Get-AverageEvalTps -Results $warm) '平均生成速度'
+Assert-Equal 45.7 (Get-AverageEvalTps -Results @($warm[0], $empty, $null)) '缺速度的結果與 $null 不列入平均'
+Assert-True ($null -eq (Get-AverageEvalTps -Results @())) '沒有結果時回 $null'
+
+# 已載入模型的段落：沒有載入時明講「無」，不印只有表頭的空表
+$none = @(Format-LoadedModelLines -Models @())
+Assert-True ($none.Count -eq 1 -and $none[0] -eq '已載入的模型：無') '沒有載入中的模型時只印一行「無」'
+Assert-Equal 1 @(Format-LoadedModelLines -Models $null).Count      '傳 $null 也當成沒有'
+
+$lines = @(Format-LoadedModelLines -Models @(
+    [pscustomobject]@{ Name = 'gemma4:12b'; Processor = '100% GPU'; Context = 131072 },
+    [pscustomobject]@{ Name = 'gemma4:31b-it-qat'; Processor = '57%/43% CPU/GPU'; Context = $null }
+))
+Assert-Equal 3 $lines.Count '標題加每顆一行'
+Assert-Equal '已載入的模型：' $lines[0] '有載入時先印標題'
+Assert-True ($lines[1] -match 'gemma4:12b' -and $lines[1] -match '100% GPU' -and $lines[1] -match '上下文 131072') '一行裡有名稱、分配、上下文'
+Assert-True ($lines[2] -match '上下文未知') '舊版 Ollama 沒有 context_length 時寫未知'
+
 # ---- 顯存粗估 -----------------------------------------------------------
 
 Write-Host "`n[6] 權重對顯存的粗估" -ForegroundColor Cyan

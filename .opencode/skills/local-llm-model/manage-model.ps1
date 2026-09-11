@@ -102,11 +102,23 @@ function Invoke-ModelBench {
     Clear-OtherLoadedModels -Tag $Tag
 
     Write-Info "生成 300 tokens × $Times 次（關閉 thinking）。權重掉到 CPU 的大模型一次可能要好幾分鐘 ..."
-    for ($i = 1; $i -le $Times; $i++) {
+    $results  = @()
+    $warmedUp = $false
+    while ($results.Count -lt $Times) {
         $r = Measure-ModelSpeed -Tag $Tag -Capabilities $caps
         if (-not $r) { break }
-        $load = if ($r.LoadSec -ge 1) { "，另花 $($r.LoadSec) 秒載入" } else { '' }
-        Write-Ok "第 $i 次：生成 $($r.EvalTps) tok/s（$($r.EvalCount) tokens），讀提示 $($r.PromptTps) tok/s$load"
+        # 只丟一次，免得模型每次都重新載入時無限重量
+        if ((Test-ColdRun $r) -and -not $warmedUp) {
+            $warmedUp = $true
+            Write-Info "暖機：生成 $($r.EvalTps) tok/s，含 $($r.LoadSec) 秒載入。冷載入後第一次的數字偏低，不列入，另外補量一次"
+            continue
+        }
+        $results += $r
+        $load = if (Test-ColdRun $r) { "，又重新載入了一次（$($r.LoadSec) 秒），這個數字可能偏低" } else { '' }
+        Write-Ok "第 $($results.Count) 次：生成 $($r.EvalTps) tok/s（$($r.EvalCount) tokens），讀提示 $($r.PromptTps) tok/s$load"
+    }
+    if ($results.Count -gt 1) {
+        Write-Ok "平均生成 $(Get-AverageEvalTps -Results $results) tok/s（$($results.Count) 次）"
     }
 
     $loaded = Get-LoadedModels | Where-Object { $_.Name -eq $Tag } | Select-Object -First 1
@@ -251,11 +263,7 @@ function Invoke-ModelList {
     Write-Step '本機模型與 OpenCode 設定'
     Write-ModelInventory -ConfigPath $ConfigPath -Explicit $ConfigPathExplicit
 
-    $loaded = @(Get-LoadedModels)
-    if ($loaded) {
-        Write-Info '已載入：'
-        foreach ($m in $loaded) { Write-Info "  $($m.Name)　$($m.Processor)　上下文 $($m.Context)" }
-    }
+    Format-LoadedModelLines -Models (Get-LoadedModels) | ForEach-Object { Write-Info $_ }
 }
 
 # ---------------------------------------------------------------- 主流程

@@ -149,6 +149,7 @@ pwsh -NoProfile -File ./.opencode/skills/local-llm-setup/setup-local-llm.ps1 -Mo
 - 關閉 thinking
 - 生成 300 tokens
 - **不帶 `num_ctx`**：量的是 OpenCode 實際會拿到的上下文。自己帶 `num_ctx` 會讓 Ollama 用另一組設定重新載入。
+- **丟掉冷載入那次**：包含載入模型的那次量測數字偏低，標成暖機、不列入，另外補量一次。
 
 分配讀 `/api/ps` 的 `size_vram / size`，格式和 `ollama ps` 的 PROCESSOR 欄一樣。
 
@@ -158,7 +159,8 @@ pwsh -NoProfile -File ./.opencode/skills/local-llm-setup/setup-local-llm.ps1 -Mo
 |---|---|---|
 | `gemma4:12b` | 100% GPU | 38.8 tok/s |
 | `gemma4:26b-a4b-it-qat`（MoE，啟用 4B） | 31%/69% CPU/GPU | 49.8 tok/s |
-| `gemma4:31b-it-qat`（密集） | 57%/43% CPU/GPU | 3.9 tok/s |
+| `gemma4:31b-it-qat`（密集，上下文 131072） | 57%/43% CPU/GPU | 3.9 tok/s |
+| `qwen3.8:27b-ctx32k`（密集，上下文 32768） | 39%/61% CPU/GPU | 7.0 tok/s |
 
 **看激活參數，不是總參數**：MoE 31% 掉到 CPU 還比 12B 快，因為每個 token 只算 4B；密集 31B 每個 token 都要穿過放在 CPU 的那 57%。權重超過顯存的密集模型，先有心理準備會慢一個數量級。
 
