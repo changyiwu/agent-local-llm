@@ -264,6 +264,9 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 | `gemma4:12b` | 131072 | 100% GPU | 45.7–47.9 tok/s |
 | `gemma4:12b-ctx16k` | 16384 | 100% GPU | 45.3–46.8 tok/s |
 | `qwen3.8:27b-ctx32k` | 32768 | **39%/61% CPU/GPU**（`ollama ps` 的 SIZE 19 GB） | **6.9–7.0 tok/s** |
+| `qwen3.8:27b-ctx64k` | 65536 | **48%/52% CPU/GPU**（SIZE 20 GB） | **5.3–5.7 tok/s** |
+
+上下文從 32K 加倍到 64K，`ollama ps` 的 SIZE 只多 1 GB，但 CPU 的比例從 39% 升到 48%，生成速度掉了約兩成。**Qwen 不像 Gemma**：上下文變大會實際吃掉顯存，把更多權重擠到 CPU。64K 版是給使用者在 OpenCode 裡試跑用的。
 
 12B 那兩列是同一天、同一台用 `-Bench` 量的，第一列的數字已經丟掉冷載入那次。它比 README 記的 38.8 tok/s 快約兩成，但 38.8 是 Ollama 0.32 時量的，量法也沒記下來，所以不能把差距歸給版本。**同一批權重，上下文 131K 和 16K 生成速度一樣**，符合 Gemma 的 KV cache 幾乎不隨上下文成長。
 
@@ -358,6 +361,9 @@ Windows 上 `opencode.exe`（CLI）與 `OpenCode.exe`（桌面 app）在 WMI 查
 **模型不照 `AGENTS.md` 做時，先確認規則有沒有被載入**
 用 `opencode run --dir <專案> "不要使用任何工具，直接根據你的系統指示回答：AGENTS.md 規定了什麼？"`。JSON 輸出裡工具呼叫數為 0、又答得出內容，就代表規則確實在系統提示裡。先做這一步，才分得清是「沒載入」還是「載入了但不照做」—— 兩者的修法完全不同。
 
+**Agent 代跑會詢問的腳本時，先列出會自動同意的步驟，再加 `-Yes`**
+Agent 的 shell 是非互動的，`Confirm-Step` 裡的 `Read-Host` 答不了。可能直接出錯，也可能讀到空字串——而空字串會被當成同意。技能寫的是「不要主動加 `-Yes`」，所以要先向使用者列出會被自動同意的步驟（下載、建衍生模型、寫 `opencode.json`、卸載其他模型），確認都是使用者要的才加。`-Check`、`-List` 不會詢問；`-Bench` 只在有別的模型載入中時才問。
+
 **Ollama 升級後跑一次 `-Check`**
 桌面 app 的 context length 存在 `db.sqlite`（`schema_version` 目前 16），大版本升級若動到 schema 或重設預設值，設好的值可能被打回出廠的 32768，且沒有任何提示。原因見上面「Ollama 桌面 app 的 GUI 設定會覆蓋 `OLLAMA_CONTEXT_LENGTH`」。
 
@@ -375,7 +381,7 @@ pwsh -NoProfile -File .\tests\test-local-llm-model.ps1
 - **setup**：語法／編碼、Windows 與 Apple Silicon 兩條選型路徑、顯卡篩選規則、LaunchAgent 的 plist 是否為合法 XML、設定合併與備份（含能力旗標）、`.json`／`.jsonc` 並存時的解析與寫入目標、server log 的上下文解析與不一致偵測。
 - **model**：參數組（`-Context` 只能配 `-Add`）、tag 正規化與 registry 網址、衍生模型命名與 `num_ctx` 解析、能力旗標、速度與分配換算、冷載入判斷與平均、已載入模型的段落、顯存粗估、`limit.context` 比對、移除目標挑選（含同前綴誘餌）、設定移除與 `model`／`agent.*.model` 殘留、API 欄位缺漏。
 
-會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 `NB-YI` 用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。
+會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 `NB-YI` 用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。2026-09-12 在 `PC-YI-FY`（16GB）又跑了 `-Check`、`-List`、`-Bench`，以及寫進真正設定檔的 `-Add qwen3.8:27b`。`-Bench` 的暖機判斷還沒在實機走過，因為 `-Add` 量速度前，測試訊息已經把模型載入了。
 
 StrictMode 下 `[xml]` 物件要從 `DocumentElement` 往下取：plist 帶 DOCTYPE，`$doc.plist` 會同時對到 DOCTYPE 節點與根元素，再取 `.dict` 就丟例外。
 
