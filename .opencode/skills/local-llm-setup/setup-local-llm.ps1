@@ -151,7 +151,7 @@ function Install-Ollama {
     }
 
     # 安裝後 PATH 尚未在本 session 生效，補上預設安裝路徑
-    $ollamaDir = Join-Path $env:LOCALAPPDATA 'Programs\Ollama'
+    $ollamaDir = Join-Path $env:LOCALAPPDATA 'Programs\Ollama'   # platform-ok: 函式在 if ($IsMacOS) 區塊尾端已 return，這裡起都是 Windows 路徑
     if (Test-Path $ollamaDir) { $env:Path = "$ollamaDir;$env:Path" }
     if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
         throw '安裝完成但仍找不到 ollama，請重開終端機後再跑一次。'

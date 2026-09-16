@@ -239,7 +239,7 @@ function Restart-OllamaServer {
             Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
 
-        $appExe = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama app.exe'
+        $appExe = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama app.exe'   # platform-ok: 已在 if ($IsMacOS) 的 else 分支裡
         if (Test-Path $appExe) { Start-Process -FilePath $appExe }
         else { Start-Process -FilePath 'ollama' -ArgumentList 'serve' -WindowStyle Hidden }
     }
@@ -259,7 +259,7 @@ function Get-PersistentEnv {
 
 function Get-OllamaLogDir {
     if ($IsMacOS) { return (Join-Path $HOME '.ollama/logs') }
-    return (Join-Path $env:LOCALAPPDATA 'Ollama')
+    return (Join-Path $env:LOCALAPPDATA 'Ollama')   # platform-ok: 上一行 if ($IsMacOS) 已先 return，這裡是 Windows 分支
 }
 
 function Read-ContextFromLogText {
