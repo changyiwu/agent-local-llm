@@ -5,7 +5,7 @@
     不連網、不下載、不建立或刪除模型、不碰真正的 opencode.json。
     會打 Ollama 或 registry 的函式只測它們背後的純函式（URL 組裝、回應換算、比對規則）。
 
-    執行：pwsh -NoProfile -File .\tests\test-local-llm-model.ps1
+    執行：pwsh -NoProfile -File ./tests/test-local-llm-model.ps1
 #>
 [CmdletBinding()]
 param()

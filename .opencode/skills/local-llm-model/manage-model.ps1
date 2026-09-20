@@ -12,19 +12,19 @@
     都會先詢問；加 -Yes 才會全程不問。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\manage-model.ps1
+    pwsh -NoProfile -File ./manage-model.ps1
     列出本機模型、各自實際會載入的上下文、OpenCode 設定是否對得上。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\manage-model.ps1 -Add qwen3.8:27b -Context 32768
+    pwsh -NoProfile -File ./manage-model.ps1 -Add qwen3.8:27b -Context 32768
     下載 qwen3.8:27b、建立 num_ctx 32768 的衍生模型 qwen3.8:27b-ctx32k、寫進 OpenCode、量速度。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\manage-model.ps1 -Bench gemma4:12b
+    pwsh -NoProfile -File ./manage-model.ps1 -Bench gemma4:12b
     量生成速度與 CPU/GPU 分配。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\manage-model.ps1 -Remove gemma4:31b-it-qat
+    pwsh -NoProfile -File ./manage-model.ps1 -Remove gemma4:31b-it-qat
     刪掉模型與它的衍生模型，並從所有 OpenCode 設定檔移除。
 #>
 [CmdletBinding(DefaultParameterSetName = 'List')]

@@ -382,8 +382,8 @@ Agent 的 shell 是非互動的，`Confirm-Step` 裡的 `Read-Host` 答不了。
 ## 測試
 
 ```powershell
-pwsh -NoProfile -File .\tests\test-local-llm-setup.ps1
-pwsh -NoProfile -File .\tests\test-local-llm-model.ps1
+pwsh -NoProfile -File ./tests/test-local-llm-setup.ps1
+pwsh -NoProfile -File ./tests/test-local-llm-model.ps1
 ```
 
 隔離測試共 203 項（setup 104 ＋ model 99）：不連網、不安裝、不下載模型、不建立或刪除模型、不動使用者環境變數、不碰真正的 `opencode.json`。改到 `.opencode/lib/LocalLlm.ps1` 時兩支都要跑。

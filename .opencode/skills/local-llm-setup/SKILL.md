@@ -45,13 +45,13 @@ description: 在一台電腦上從零把 Ollama 裝好並接進 OpenCode（一�
 不做任何改動，只印出偵測到的硬體與建議方案。把結果讀給使用者聽，確認後才繼續。
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\setup-local-llm.ps1" -Plan
+pwsh -NoProfile -File "<本技能資料夾>/setup-local-llm.ps1" -Plan
 ```
 
 ### 第二步：正式設定
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\setup-local-llm.ps1"
+pwsh -NoProfile -File "<本技能資料夾>/setup-local-llm.ps1"
 ```
 
 每個會改動系統的步驟都會問一次（安裝 Ollama、下載模型、設定環境變數、macOS 建立 LaunchAgent、覆寫 `opencode.json`）。
@@ -60,7 +60,7 @@ pwsh -NoProfile -File "<本技能資料夾>\setup-local-llm.ps1"
 ### 想檢查現況
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\setup-local-llm.ps1" -Check
+pwsh -NoProfile -File "<本技能資料夾>/setup-local-llm.ps1" -Check
 ```
 
 會列出：
@@ -158,8 +158,8 @@ OpenCode 的 schema 只認 `limit: { context, output }`。網路上不少舊教�
 改過腳本或共用函式庫後跑一次隔離測試（不連網、不安裝、不碰真正的設定檔）：
 
 ```powershell
-pwsh -NoProfile -File "<專案根目錄>\tests\test-local-llm-setup.ps1"
-pwsh -NoProfile -File "<專案根目錄>\tests\test-local-llm-model.ps1"
+pwsh -NoProfile -File "<專案根目錄>/tests/test-local-llm-setup.ps1"
+pwsh -NoProfile -File "<專案根目錄>/tests/test-local-llm-model.ps1"
 ```
 
 共用函式庫兩個技能都在用，改了它就兩支都要跑。

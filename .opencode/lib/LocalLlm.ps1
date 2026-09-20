@@ -76,7 +76,7 @@ function Get-GpuInventory {
         } catch { }
     }
 
-    $classKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+    $classKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'   # platform-ok: 登錄檔路徑不是檔案路徑；本函式只由 Get-WindowsHardware 呼叫
     foreach ($sub in (Get-ChildItem $classKey -ErrorAction SilentlyContinue)) {
         $p = Get-ItemProperty $sub.PSPath -ErrorAction SilentlyContinue
         if (-not $p -or -not $p.PSObject.Properties['DriverDesc']) { continue }

@@ -5,7 +5,7 @@
     不連網、不安裝、不下載模型、不動使用者環境變數、不碰真正的 opencode.json。
     共用函式庫只有函式與常數，直接 dot-source；主腳本有主流程，用 AST 把函式與選型表抽出來單獨定義。
 
-    執行：pwsh -NoProfile -File .\tests\test-local-llm-setup.ps1
+    執行：pwsh -NoProfile -File ./tests/test-local-llm-setup.ps1
 #>
 [CmdletBinding()]
 param()

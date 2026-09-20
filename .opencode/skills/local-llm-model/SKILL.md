@@ -30,7 +30,7 @@ description: 在已經設定好 Ollama 的電腦上加入、試跑、量速度�
 ### 第一步：先看現況
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1"
+pwsh -NoProfile -File "<本技能資料夾>/manage-model.ps1"
 ```
 
 把清單讀給使用者聽，特別是這幾種警告：
@@ -41,7 +41,7 @@ pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1"
 ### 加入一顆模型
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Add qwen3.8:27b -Context 32768
+pwsh -NoProfile -File "<本技能資料夾>/manage-model.ps1" -Add qwen3.8:27b -Context 32768
 ```
 
 腳本會先印「評估」段落，列出硬體、模型大小、權重塞不塞得進顯存。**下載前把這段讀給使用者聽**，特別是出現「一定有部分層跑在 CPU」時。確認後才讓腳本繼續，大模型動輒 18 GB 起跳。
@@ -58,7 +58,7 @@ pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Add qwen3.8:27b -
 ### 量速度
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Bench qwen3.8:27b-ctx32k
+pwsh -NoProfile -File "<本技能資料夾>/manage-model.ps1" -Bench qwen3.8:27b-ctx32k
 ```
 
 量法固定：原生 `/api/generate`、關閉 thinking、生成 300 tokens、不帶 `num_ctx`（量的是 OpenCode 實際會拿到的上下文）。本專案既有的數字都是這樣量的，可以直接比。
@@ -77,7 +77,7 @@ pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Bench qwen3.8:27b
 ### 移除
 
 ```powershell
-pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Remove gemma4:31b-it-qat
+pwsh -NoProfile -File "<本技能資料夾>/manage-model.ps1" -Remove gemma4:31b-it-qat
 ```
 
 腳本會先列出所有目標再問一次：
@@ -128,7 +128,7 @@ pwsh -NoProfile -File "<本技能資料夾>\manage-model.ps1" -Remove gemma4:31b
 ## 測試
 
 ```powershell
-pwsh -NoProfile -File "<專案根目錄>\tests\test-local-llm-model.ps1"
+pwsh -NoProfile -File "<專案根目錄>/tests/test-local-llm-model.ps1"
 ```
 
 改到共用函式庫時，`tests\test-local-llm-setup.ps1` 也要跑。

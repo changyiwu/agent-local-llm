@@ -14,15 +14,15 @@
     覆寫 opencode.json）都會先詢問；加 -Yes 才會全程不問。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\setup-local-llm.ps1 -Plan
+    pwsh -NoProfile -File ./setup-local-llm.ps1 -Plan
     只印出偵測結果與建議方案，不做任何改動。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\setup-local-llm.ps1
+    pwsh -NoProfile -File ./setup-local-llm.ps1
     互動式完整設定。
 
 .EXAMPLE
-    pwsh -NoProfile -File .\setup-local-llm.ps1 -Check
+    pwsh -NoProfile -File ./setup-local-llm.ps1 -Check
     檢查現況：環境變數、實際生效的上下文、每顆模型的 limit.context 與實際值。
 #>
 [CmdletBinding()]
