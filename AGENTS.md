@@ -1,7 +1,7 @@
 # agent-local-llm（專案藍圖）
 
 > 本檔為跨 Agent 通用的專案藍圖（AGENTS.md 開放標準）。任何 Agent 的每個 session 都應先讀本檔＋`handoff.md`。
-> Claude Code 不讀 `agents.md`，改由 `CLAUDE.md` 的 `@agents.md` import 本檔；Claude 專屬規範寫在 `CLAUDE.md`。
+> Claude Code 預設只在沒有 `CLAUDE.md` 時才讀 `AGENTS.md`，故由 `CLAUDE.md` 的 `@AGENTS.md` import 本檔；Claude 專屬規範寫在 `CLAUDE.md`。
 
 ## 專案簡介
 
@@ -16,7 +16,7 @@
 
 | 層級 | 位置 | 用途 |
 |------|------|------|
-| L1 本地 | `我的雲端硬碟/agents/agent-local-llm`（GDrive 同步） | `agents.md` 藍圖＋`handoff.md` 交接＋`CLAUDE.md` 橋接 |
+| L1 本地 | `我的雲端硬碟/agents/agent-local-llm`（GDrive 同步） | `AGENTS.md` 藍圖＋`handoff.md` 交接＋`CLAUDE.md` 橋接 |
 | L2 GitHub | [changyiwu/agent-local-llm](https://github.com/changyiwu/agent-local-llm)（**公開**；舊網址 `agent-gemma` 由 GitHub 自動轉址） | 版本控制與雲端備份（`handoff.md` 不進 repo） |
 | L3 Obsidian | vault 內 `agent-local-llm/專案工作流程.md` | 詳細脈絡、決策紀錄、踩坑筆記、更動紀錄 |
 
@@ -60,7 +60,7 @@ agent-local-llm/
 │   ├── assert.ps1                    # 兩支測試共用的斷言
 │   ├── test-local-llm-setup.ps1
 │   └── test-local-llm-model.ps1
-├── agents.md              # 跨 Agent 專案藍圖
+├── AGENTS.md              # 跨 Agent 專案藍圖
 ├── handoff.md             # 跨工作階段交接（本機檔，git 不追蹤，靠 GDrive 同步）
 ├── CLAUDE.md              # Claude Code 橋接
 ├── README.md

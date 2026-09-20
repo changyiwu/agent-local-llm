@@ -295,7 +295,7 @@ agent-local-llm/
 │   ├── assert.ps1                    # 兩支測試共用的斷言
 │   ├── test-local-llm-setup.ps1
 │   └── test-local-llm-model.ps1
-├── agents.md              # 跨 Agent 專案藍圖
+├── AGENTS.md              # 跨 Agent 專案藍圖
 ├── handoff.md             # 跨工作階段交接（不進 repo）
 ├── CLAUDE.md              # Claude Code 橋接
 ├── README.md
