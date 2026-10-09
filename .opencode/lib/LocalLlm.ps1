@@ -66,9 +66,13 @@ function Get-GpuInventory {
             foreach ($line in @($lines)) {
                 if ([string]::IsNullOrWhiteSpace($line)) { continue }
                 $parts = $line -split ',\s*'
+                # 統一記憶體的 GPU（DGX Spark／RTX Spark 這類）回報 [N/A]；
+                # 直接轉 [double] 會丟例外，整批 GPU 被 catch 吞掉、從清單消失
+                $mib = 0.0
+                $null = [double]::TryParse($parts[1].Trim(), [ref]$mib)
                 $result.Add([pscustomobject]@{
                     Name         = $parts[0].Trim()
-                    VramGB       = [math]::Round(([double]$parts[1]) / 1024, 1)
+                    VramGB       = [math]::Round($mib / 1024, 1)
                     Vendor       = 'NVIDIA'
                     IsIntegrated = $false
                 })
@@ -119,6 +123,19 @@ function Get-SystemRamGB {
     [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
 }
 
+function Test-WindowsArm64 {
+    <#  看作業系統的架構，不看 pwsh 自己的：x64 版 pwsh 在 ARM 上模擬執行時 ProcessArchitecture 是 X64。 #>
+    return $IsWindows -and
+        [Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [Runtime.InteropServices.Architecture]::Arm64
+}
+
+function Get-UnifiedMemoryUsableGB {
+    <#  統一記憶體（CPU/GPU 共用）能分給 GPU 的保守估計。Apple Silicon 與 Windows ARM 的 NVIDIA 共用這條。 #>
+    param([double] $RamGB)
+    $ratio = if ($RamGB -gt 36) { 0.80 } else { 0.70 }
+    return [pscustomobject]@{ UsableGB = [math]::Round($RamGB * $ratio, 1); Ratio = $ratio }
+}
+
 function Get-WindowsHardware {
     $gpus  = Get-GpuInventory
     $ramGB = Get-SystemRamGB
@@ -140,6 +157,28 @@ function Get-WindowsHardware {
         }
         return [pscustomobject]@{ Kind = 'GPU'; UsableGB = $gpu.VramGB; RamGB = $ramGB; Reason = $reason; Lines = $lines }
     }
+
+    if (Test-WindowsArm64) {
+        # Windows on ARM 的 NVIDIA（RTX Spark）是統一記憶體：VRAM 讀到 0 或很小是正常的，
+        # 上面的獨顯篩選必然落空。改照 Apple Silicon 的算法估，但 Ollama 在這個平台上
+        # 有沒有真的走 CUDA 尚未實機驗證，所以理由裡明說，交給量測時的 ollama ps 定案。
+        $nvidia = @($gpus | Where-Object { $_.Vendor -eq 'NVIDIA' }) | Select-Object -First 1
+        if ($nvidia) {
+            $um = Get-UnifiedMemoryUsableGB -RamGB $ramGB
+            $lines += ("Windows on ARM 統一記憶體：GPU 可取用約 {0} GB（總記憶體的 {1}%）" -f $um.UsableGB, [int]($um.Ratio * 100))
+            return [pscustomobject]@{
+                Kind = 'GPU'; UsableGB = $um.UsableGB; RamGB = $ramGB
+                Reason = "$($nvidia.Name)（Windows on ARM 統一記憶體，GPU 可取用約 $($um.UsableGB) GB）— Ollama 在此平台走不走 CUDA 尚未實機驗證，以 ollama ps 的 CPU/GPU 比例為準"
+                Lines = $lines
+            }
+        }
+        return [pscustomobject]@{
+            Kind = 'CPU'; UsableGB = 0; RamGB = $ramGB
+            Reason = "Windows on ARM 且沒有 NVIDIA GPU（例如 Snapdragon），Ollama 只能用 CPU（系統記憶體 $ramGB GB）"
+            Lines = $lines
+        }
+    }
+
     return [pscustomobject]@{
         Kind = 'CPU'; UsableGB = 0; RamGB = $ramGB
         Reason = "找不到 Ollama 可用的獨立顯卡，改用 CPU（系統記憶體 $ramGB GB）"
@@ -158,8 +197,9 @@ function Get-MacHardware {
 
     $chip  = (& sysctl -n machdep.cpu.brand_string).Trim()
     $ramGB = Get-SystemRamGB
-    $ratio = if ($ramGB -gt 36) { 0.80 } else { 0.70 }
-    $usableGB = [math]::Round($ramGB * $ratio, 1)
+    $um       = Get-UnifiedMemoryUsableGB -RamGB $ramGB
+    $ratio    = $um.Ratio
+    $usableGB = $um.UsableGB
 
     $lines = @(
         ('{0,-40} {1,6} GB  統一記憶體' -f $chip, $ramGB)

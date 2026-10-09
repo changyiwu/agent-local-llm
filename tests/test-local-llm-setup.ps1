@@ -88,8 +88,8 @@ foreach ($c in $macCases) {
 }
 
 # 比例本身也要對，否則上面的 Usable 只是自我實現的預言
-Assert-Equal 11.2 ([math]::Round(16 * 0.70, 1)) '16GB Mac 的可用比例換算'
-Assert-Equal 51.2 ([math]::Round(64 * 0.80, 1)) '64GB Mac 的可用比例換算'
+Assert-Equal 11.2 (Get-UnifiedMemoryUsableGB -RamGB 16).UsableGB '16GB 統一記憶體的可用比例換算'
+Assert-Equal 51.2 (Get-UnifiedMemoryUsableGB -RamGB 64).UsableGB '64GB 統一記憶體的可用比例換算'
 
 Write-Host "`n[4] CPU 退回路徑" -ForegroundColor Cyan
 
@@ -122,6 +122,32 @@ Assert-Equal 0 @(Select-UsableGpu -Gpus $null).Count '沒有任何顯示卡時�
 
 Assert-True ('AMD Radeon(TM) Graphics' -match $IntegratedPattern) 'AMD 內顯名稱被認成內顯'
 Assert-True ('AMD Radeon RX 7900 XTX' -notmatch $IntegratedPattern) 'AMD 獨顯名稱不被誤認成內顯'
+
+Write-Host "`n[5b] Windows on ARM 統一記憶體" -ForegroundColor Cyan
+
+# 在子作用域裡蓋掉偵測函式，Get-WindowsHardware 會用到這些假的；離開後原本的不受影響
+function Invoke-FakeWindowsHardware {
+    param($Gpus, [double] $Ram, [bool] $Arm)
+    & {
+        function Get-GpuInventory  { $Gpus }
+        function Get-SystemRamGB   { $Ram }
+        function Test-WindowsArm64 { $Arm }
+        Get-WindowsHardware
+    }
+}
+
+# RTX Spark：nvidia-smi 回報 [N/A] 被解析成 0，登錄檔也可能只給一點點
+$hw = Invoke-FakeWindowsHardware -Gpus @(New-Gpu 'NVIDIA RTX Spark' 0) -Ram 64 -Arm $true
+Assert-Equal 'GPU' $hw.Kind 'Windows ARM + NVIDIA 統一記憶體走 GPU 路徑'
+Assert-Equal 51.2 $hw.UsableGB 'Windows ARM 64GB 的可用量照統一記憶體比例'
+Assert-True ($hw.Reason -match '尚未實機驗證') '理由裡明說 Ollama CUDA 未實機驗證'
+
+$hw = Invoke-FakeWindowsHardware -Gpus @(New-Gpu 'Qualcomm(R) Adreno(TM) X1-85 GPU' 0 'Other') -Ram 32 -Arm $true
+Assert-Equal 'CPU' $hw.Kind 'Windows ARM 沒有 NVIDIA（Snapdragon）走 CPU'
+Assert-True ($hw.Reason -match 'Windows on ARM') 'CPU 理由說明是 Windows on ARM'
+
+$hw = Invoke-FakeWindowsHardware -Gpus @(New-Gpu 'NVIDIA GeForce GT 710' 2) -Ram 16 -Arm $false
+Assert-Equal 'CPU' $hw.Kind 'x64 的小顯存 NVIDIA 舊卡仍走 CPU（不被 ARM 分支誤收）'
 
 Write-Host "`n[6] macOS LaunchAgent plist" -ForegroundColor Cyan
 
