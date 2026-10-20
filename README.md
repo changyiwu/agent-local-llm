@@ -304,7 +304,7 @@ agent-local-llm/
 └── .gitignore
 ```
 
-技能刻意放在 `.opencode/skills/` 這個**專案層級**路徑，只在這個專案裡生效，不安裝到 `~/.config/opencode/skills/`。它們只服務 OpenCode 接本機模型這一件事，沒有跨專案使用的理由，也不需要 `sync-skills` 同步到其他 Agent。
+技能刻意放在 `.opencode/skills/` 這個**專案層級**路徑，只在這個專案裡生效，不安裝到 `~/.config/opencode/skills/`。它們只服務 OpenCode 接本機模型這一件事，沒有跨專案使用的理由，也不需要 `skill-sync` 同步到其他 Agent。
 
 ## 授權
 

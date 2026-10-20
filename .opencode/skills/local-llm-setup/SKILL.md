@@ -20,7 +20,7 @@ description: 在一台電腦上從零把 Ollama 裝好並接進 OpenCode（一�
 
 **跟 local-llm-model 的分工**：這支處理「一台電腦做一次」的事。已經設定好的電腦要加入、試跑、量速度或刪除某一顆模型，用 `local-llm-model`。它可以只給單一模型設上下文，不會動到這裡設的全域值。
 
-這是**專案層級**技能（`.opencode/skills/`），只在 agent-local-llm 專案裡生效，刻意不安裝到全域。不要用 `sync-skills` 把它同步到其他 Agent 的技能目錄。
+這是**專案層級**技能（`.opencode/skills/`），只在 agent-local-llm 專案裡生效，刻意不安裝到全域。不要用 `skill-sync` 把它同步到其他 Agent 的技能目錄。
 
 ## 支援平台
 

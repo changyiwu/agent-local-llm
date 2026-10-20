@@ -18,7 +18,7 @@ description: 在已經設定好 Ollama 的電腦上加入、試跑、量速度�
 
 主腳本：本技能資料夾的 `manage-model.ps1`。共用函式在專案的 `.opencode/lib/LocalLlm.ps1`，腳本會自己載入。
 
-這是**專案層級**技能，只在 agent-local-llm 專案裡生效。不要用 `sync-skills` 同步到全域。
+這是**專案層級**技能，只在 agent-local-llm 專案裡生效。不要用 `skill-sync` 同步到全域。
 
 ## 環境需求
 

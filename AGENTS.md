@@ -285,7 +285,7 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 Qwen 27B 掉到 CPU 的比例（39%）比 31B（57%）少，速度也快了近一倍（7.0 對 3.9）。但兩者的上下文不同（32768 對 131072），而且不是同一台機器，所以不能說成是模型本身比較快。每輪 agent 任務大概要好幾分鐘，實際能不能用還沒驗證。讀提示速度第一次 23.7、第二次 113.9，差這麼多可能是第二次的提示命中了快取，沒有深究。
 
 **技能放專案層級，不進全域**
-路徑是 `.opencode/skills/local-llm-setup/` 與 `.opencode/skills/local-llm-model/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `sync-skills`：兩個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。而且它們依賴專案裡的 `.opencode/lib/LocalLlm.ps1`，單獨複製出去也跑不起來。
+路徑是 `.opencode/skills/local-llm-setup/` 與 `.opencode/skills/local-llm-model/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `skill-sync`：兩個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。而且它們依賴專案裡的 `.opencode/lib/LocalLlm.ps1`，單獨複製出去也跑不起來。
 
 **macOS 只支援 Apple Silicon**
 Intel Mac 沒有 Ollama 可用的 GPU 加速（Metal 後端只對 Apple Silicon 有效），純 CPU 跑 12B 不堪用。腳本在 `Get-MacHardware` 用 `uname -m` 檢查，不是 arm64 就直接 throw 並說明原因，而不是讓使用者下載完 7.6GB 才發現跑不動。
