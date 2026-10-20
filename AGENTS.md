@@ -379,6 +379,8 @@ Agent 的 shell 是非互動的，`Confirm-Step` 裡的 `Read-Host` 答不了。
 **Ollama 升級後跑一次 `-Check`**
 桌面 app 的 context length 存在 `db.sqlite`（`schema_version` 目前 16），大版本升級若動到 schema 或重設預設值，設好的值可能被打回出廠的 32768，且沒有任何提示。原因見上面「Ollama 桌面 app 的 GUI 設定會覆蓋 `OLLAMA_CONTEXT_LENGTH`」。
 
+- **產出一律放 `output/`**：本專案產生的檔案或資料夾（成品、匯出、報表、生成圖、渲染等）預設放專案根目錄的 `output/`，不另開 `outputs/`、`exports/`、`generated/`、`out/` 之類的資料夾，方便找；`output/` 不進 git。部署工具指定的建置目錄（`dist/`、`build/`）不在此限
+
 ## 測試
 
 ```powershell

@@ -8,3 +8,6 @@ credentials.*
 handoff.md
 # 腳本產生的設定備份
 *.bak-*
+
+# 產出一律放 output/，不進 git
+output/
