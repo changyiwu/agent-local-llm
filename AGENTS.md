@@ -50,7 +50,7 @@
 - [x] 階段十：讓腳本處理 `opencode.jsonc`（盤點 `.json`／`.jsonc` 並存、`-Check` 兩份都讀並揪出死項目、寫入前警告重複的 provider 定義）；測試 59 → 72 項
 - [x] 階段十一：揪出 Ollama 桌面 app 的 GUI 設定覆蓋 `OLLAMA_CONTEXT_LENGTH`（腳本比對 server log 的實際注入值，不一致就報警並給修法）；測試 72 → 89 項
 - [x] 階段十二：專案改名 `agent-local-llm`，技能依任務拆成 `local-llm-setup`／`local-llm-model`，共用函式抽成 `.opencode/lib/LocalLlm.ps1`；新增 `-Add`／`-Bench`／`-Remove`／`-List`，`-Check` 改成逐顆比對 `limit.context` 與實際上下文；測試 89 → 187 項並全開 StrictMode；在 `NB-YI` 用真的 Ollama 跑過 `-Add`（含衍生模型）→ `-List` → `-Remove` 全流程
-- [~] 階段十三：試跑 `qwen3.8:27b`，和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」。**已在 `PC-YI-FY` 用 `-Add qwen3.8:27b -Context 32768` 完成下載、設定與量速度**（39%/61% CPU/GPU、7.0 tok/s，見「`qwen3.8:27b` 實測速度」）；**尚缺**：timeout 沙盒的 agent 表現比較
+- [~] 階段十三：試跑 `qwen3.8:27b`，和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」。**已在 `PC-YI-FY` 用 `-Add qwen3.8:27b -Context 32768` 完成下載、設定與量速度**（39%/61% CPU/GPU、7.0 tok/s，見「`qwen3.8:27b` 實測速度」）；**2026-10-28 在 `LT-YI-RS`（32 GB VRAM）用 128K 上下文＋q8_0 KV 跑到 100% GPU、15.4 tok/s**；**尚缺**：timeout 沙盒的 agent 表現比較
 
 技能刻意**不**同步到全域技能目錄，見下方「技術決策」。
 
@@ -283,6 +283,19 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 12B 那兩列是同一天、同一台用 `-Bench` 量的，第一列的數字已經丟掉冷載入那次。它比 README 記的 38.8 tok/s 快約兩成，但 38.8 是 Ollama 0.32 時量的，量法也沒記下來，所以不能把差距歸給版本。**同一批權重，上下文 131K 和 16K 生成速度一樣**，符合 Gemma 的 KV cache 幾乎不隨上下文成長。
 
 Qwen 27B 掉到 CPU 的比例（39%）比 31B（57%）少，速度也快了近一倍（7.0 對 3.9）。但兩者的上下文不同（32768 對 131072），而且不是同一台機器，所以不能說成是模型本身比較快。每輪 agent 任務大概要好幾分鐘，實際能不能用還沒驗證。讀提示速度第一次 23.7、第二次 113.9，差這麼多可能是第二次的提示命中了快取，沒有深究。
+
+**`qwen3.8:27b` 在 `LT-YI-RS` 跑 128K 全 GPU（2026-10-28）**
+`LT-YI-RS` 是 Windows on ARM 筆電（NVIDIA RTX Spark N1X），64 GB 統一記憶體由使用者切成 RAM 32 GB＋VRAM 32 GB，`nvidia-smi` 回報 31232 MiB、腳本判讀 30.5 GB。Ollama 0.40.12 由桌面 app 啟動。設了 `OLLAMA_FLASH_ATTENTION=1` 與 `OLLAMA_KV_CACHE_TYPE=q8_0`（使用者環境變數，全域），再跑 `-Add qwen3.8:27b -Context 131072`：
+
+| 模型 | 上下文 | KV cache | 分配 | 生成速度 | 讀提示 |
+|---|---|---|---|---|---|
+| `qwen3.8:27b-ctx128k`（Q4，權重 16.5 GiB） | 131072 | q8_0 | **100% GPU**（`ollama ps` SIZE 18 GB） | **14.5–16.3 tok/s** | 91.1–144.5 tok/s |
+
+server log 顯示 KV cache 只建在 **16 層**：131072 下 K、V 各 2176 MiB（q8_0），合計 4352 MiB；另有 1 層 f16 的 512 MiB。也就是 Qwen 3.8 只有少數層是完整注意力，這解釋了 `PC-YI-FY` 上 32K→64K 的 SIZE 只多 1 GB。那邊速度掉兩成，主要是因為多出的那 1 GB 把權重擠到 CPU，而不是 KV 本身很大。換成 f16 推算約 8.7 GB，32 GB 的 VRAM 也放得下。
+
+這台的 Windows on ARM 版 Ollama 確實會用 GPU（`ollama ps` 的 RUNNER 為 `llamacpp`、PROCESSOR 100% GPU），不需要改用 llama.cpp。速度約 15 tok/s，是 16GB 卡上 offload 版（7.0）的兩倍，但只有 12B 在 16GB 卡上的三分之一。這筆是 `-Add` 跑完後直接量的，模型已由測試訊息載入，所以沒有冷載入那次。agent 實際表現還沒在 OpenCode 裡測。
+
+全域的 `OLLAMA_CONTEXT_LENGTH` 在這台沒設，server log 記的是 `OLLAMA_CONTEXT_LENGTH:0`。0.40 的桌面 app 至少在這台沒有注入出廠的 32768，和 0.32 時不同，原因沒查。
 
 **技能放專案層級，不進全域**
 路徑是 `.opencode/skills/local-llm-setup/` 與 `.opencode/skills/local-llm-model/` —— OpenCode 對專案技能會從 cwd 往上找到 git worktree 根目錄。刻意不裝進 `~/.config/opencode/skills/`，也不跑 `skill-sync`：兩個技能只服務「OpenCode 接本機模型」這一件事，沒有跨專案使用的理由，放全域只會在每個專案的技能清單裡佔位置。而且它們依賴專案裡的 `.opencode/lib/LocalLlm.ps1`，單獨複製出去也跑不起來。
