@@ -49,8 +49,8 @@
 - [~] 階段九：驗證 24GB 以上那幾階的選型。**已在 16GB 卡上用 CPU offload 實測 MoE 與 31B 密集**：`gemma4:26b-a4b-it-qat` 更快但沒有更會自我檢查（見下方「MoE 實測」）；`gemma4:31b-it-qat` 57% 掉到 CPU、只剩 3.9 tok/s，能力也沒有明顯勝過 12B（見「31B 密集模型實測」）。**尚缺**：24GB 卡全 GPU 的表現、Apple Silicon 路徑（併入階段八）
 - [x] 階段十：讓腳本處理 `opencode.jsonc`（盤點 `.json`／`.jsonc` 並存、`-Check` 兩份都讀並揪出死項目、寫入前警告重複的 provider 定義）；測試 59 → 72 項
 - [x] 階段十一：揪出 Ollama 桌面 app 的 GUI 設定覆蓋 `OLLAMA_CONTEXT_LENGTH`（腳本比對 server log 的實際注入值，不一致就報警並給修法）；測試 72 → 89 項
-- [x] 階段十二：專案改名 `agent-local-llm`，技能依任務拆成 `local-llm-setup`／`local-llm-model`，共用函式抽成 `.opencode/lib/LocalLlm.ps1`；新增 `-Add`／`-Bench`／`-Remove`／`-List`，`-Check` 改成逐顆比對 `limit.context` 與實際上下文；測試 89 → 187 項並全開 StrictMode；在 `NB-YI` 用真的 Ollama 跑過 `-Add`（含衍生模型）→ `-List` → `-Remove` 全流程
-- [~] 階段十三：試跑 `qwen3.8:27b`，和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」。**已在 `PC-YI-FY` 用 `-Add qwen3.8:27b -Context 32768` 完成下載、設定與量速度**（39%/61% CPU/GPU、7.0 tok/s，見「`qwen3.8:27b` 實測速度」）；**2026-10-28 在 `LT-YI-RS`（32 GB VRAM）用 128K 上下文＋q8_0 KV 跑到 100% GPU、15.4 tok/s**；**尚缺**：timeout 沙盒的 agent 表現比較
+- [x] 階段十二：專案改名 `agent-local-llm`，技能依任務拆成 `local-llm-setup`／`local-llm-model`，共用函式抽成 `.opencode/lib/LocalLlm.ps1`；新增 `-Add`／`-Bench`／`-Remove`／`-List`，`-Check` 改成逐顆比對 `limit.context` 與實際上下文；測試 89 → 187 項並全開 StrictMode；在 RTX 5060 Laptop 8GB 筆電上用真的 Ollama 跑過 `-Add`（含衍生模型）→ `-List` → `-Remove` 全流程
+- [~] 階段十三：試跑 `qwen3.8:27b`，和 12B、31B 用同一個沙盒比速度與 agent 表現。這是第一次用 Gemma 以外的密集 27B 驗證「密集 30B 級能不能自我稽核」。**已在 RTX 5060 Ti 16GB 桌機上用 `-Add qwen3.8:27b -Context 32768` 完成下載、設定與量速度**（39%/61% CPU/GPU、7.0 tok/s，見「`qwen3.8:27b` 實測速度」）；**2026-10-28 在 RTX Spark N1X 筆電（32 GB VRAM）上用 128K 上下文＋q8_0 KV 跑到 100% GPU、15.4 tok/s**；**尚缺**：timeout 沙盒的 agent 表現比較
 
 技能刻意**不**同步到全域技能目錄，見下方「技術決策」。
 
@@ -102,7 +102,7 @@ agent-local-llm/
 模型不支援 `tools` 時 `-Add` 會警告。那種模型在 OpenCode 裡只能聊天，不能跑 agent。
 
 **衍生模型的命名 `<tag>-ctx<k>` 是 `-Remove` 的依據**
-`-Add qwen3.8:27b -Context 32768` 建出 `qwen3.8:27b-ctx32k`，沿用 `PC-YI-FY` 上既有的 `gemma4:12b-ctx16k`。`-Remove` 靠 `^<tag>-ctx\d+k?$` 找出衍生模型一起刪（衍生模型共用權重 blob，只刪原模型不會釋出空間）。正則必須綁「`-ctx` 加數字」：刪 `gemma4:12b` 不能順手把 `gemma4:12b-it-qat` 也刪掉，測試裡刻意放了這個誘餌。
+`-Add qwen3.8:27b -Context 32768` 建出 `qwen3.8:27b-ctx32k`，沿用 16GB 桌機上既有的 `gemma4:12b-ctx16k`。`-Remove` 靠 `^<tag>-ctx\d+k?$` 找出衍生模型一起刪（衍生模型共用權重 blob，只刪原模型不會釋出空間）。正則必須綁「`-ctx` 加數字」：刪 `gemma4:12b` 不能順手把 `gemma4:12b-it-qat` 也刪掉，測試裡刻意放了這個誘餌。
 
 有沒有釘住上下文，看 `/api/show` 的 `parameters` 裡有沒有 `num_ctx` 那一行（純文字、以空白對齊；沒設參數的模型連 `parameters` 欄位都沒有）。`-Check` 與 `-List` 用它判斷每顆模型實際會載入多少上下文：有 `num_ctx` 看它，沒有就看全域值。
 
@@ -112,9 +112,9 @@ agent-local-llm/
 **`-Bench` 的量法**
 走原生 `/api/generate`、`think=false`、`num_predict=300`，這就是前面 31B 那組 3.9 tok/s 的量法，新數字可以直接跟舊的比。**刻意不帶 `options.num_ctx`**：要量的是 OpenCode 實際會拿到的上下文，自己帶會讓 Ollama 用另一組設定重新載入。`think` 只對回報 `thinking` 能力的模型帶。
 
-分配讀 `/api/ps` 的 `size_vram / size`，算法和 `ollama ps` 的 PROCESSOR 欄一樣。`/api/ps` 在 0.34 有 `context_length` 欄位，舊版不一定有，所以一律用 `Get-JsonProp` 讀。量測前有別的模型載入中就先問要不要卸載，這是 `PC-YI-SL` 上 31B 把 12B 擠到 CPU 的教訓。
+分配讀 `/api/ps` 的 `size_vram / size`，算法和 `ollama ps` 的 PROCESSOR 欄一樣。`/api/ps` 在 0.34 有 `context_length` 欄位，舊版不一定有，所以一律用 `Get-JsonProp` 讀。量測前有別的模型載入中就先問要不要卸載，這是在 16GB 桌機上 31B 把 12B 擠到 CPU 的教訓。
 
-**冷載入那次不列入（2026-09-12 加入）。** 回應的 `load_duration` 滿 1 秒就算冷載入，標成暖機、另外補量一次，`-Runs` 因此是有效次數。只丟一次：模型每次都重新載入時（例如 keep-alive 太短）照樣列入並註明，不會無限重量。起因是 `PC-YI-FY` 上 `gemma4:12b` 冷載入那次只有 28.1 tok/s（載入 37.8 秒、讀提示 1.5 tok/s），之後是 45.7 與 47.9。**桌機也會這樣**，不只是 `NB-YI` 那種筆電省電狀態。同一批權重的 `gemma4:12b-ctx16k` 緊接著量，只花 3.4 秒載入，第一次就是 45.8，看起來拖慢的主要是從磁碟讀權重，但沒有驗證。代價是那種情況也會多量一次。
+**冷載入那次不列入（2026-09-12 加入）。** 回應的 `load_duration` 滿 1 秒就算冷載入，標成暖機、另外補量一次，`-Runs` 因此是有效次數。只丟一次：模型每次都重新載入時（例如 keep-alive 太短）照樣列入並註明，不會無限重量。起因是 16GB 桌機上 `gemma4:12b` 冷載入那次只有 28.1 tok/s（載入 37.8 秒、讀提示 1.5 tok/s），之後是 45.7 與 47.9。**桌機也會這樣**，不只是 8GB 筆電那種省電狀態。同一批權重的 `gemma4:12b-ctx16k` 緊接著量，只花 3.4 秒載入，第一次就是 45.8，看起來拖慢的主要是從磁碟讀權重，但沒有驗證。代價是那種情況也會多量一次。
 
 **下載前查 registry 的大小與磁碟空間**
 `-Add` 會先抓 `https://registry.ollama.ai/v2/<namespace>/<name>/manifests/<tag>`（`Accept: application/vnd.docker.distribution.manifest.v2+json`），加總 layers 與 config 的 `size`，就是 `ollama pull` 要下載的量。`qwen3.8:27b` 是 16.52 GiB（網頁寫 18GB，十進位），`gemma4:12b` 是 7.04 GiB，和選型表的 7.6 GB 對得上。`hf.co/...` 這類別家 registry 不查。
@@ -130,7 +130,7 @@ Ollama 0.30 之後，`OLLAMA_CONTEXT_LENGTH` 未設定時是「依 VRAM 動態�
 **Ollama 桌面 app 的 GUI 設定會覆蓋 `OLLAMA_CONTEXT_LENGTH`（0.32 實測）**
 桌面 app 把自己的設定存在 `db.sqlite` 的 `settings.context_length`（Windows 在 `%LOCALAPPDATA%\Ollama\`），**出廠預設 32768**。它啟動 server 時會把這個值當環境變數注入，蓋掉使用者環境變數，而且沒有任何提示。
 
-在 `PC-YI-FY` 上的鐵證：使用者環境變數設成 131072，server log 卻是
+在 RTX 5060 Ti 16GB 桌機上的鐵證：使用者環境變數設成 131072，server log 卻是
 
 ```
 msg="server config" env="map[... OLLAMA_CONTEXT_LENGTH:32768 ...]"
@@ -139,7 +139,7 @@ msg="vram-based default context" total_vram="15.9 GiB" default_num_ctx=4096
 
 Ollama 自己依 VRAM 算的是 4096，實際用 32768 —— 那個 32768 只可能來自 GUI。同一台改用 `ollama serve` 直接啟動，注入的就是 131072。
 
-這也解掉了 `NB-YI` 那個「`OLLAMA_CONTEXT_LENGTH` 進場前就已是 32768、來源不明」的謎：**那不是誰設的，是桌面 app 的出廠預設**。
+這也解掉了 8GB 筆電上那個「`OLLAMA_CONTEXT_LENGTH` 進場前就已是 32768、來源不明」的謎：**那不是誰設的，是桌面 app 的出廠預設**。
 
 影響很惡劣：腳本每一步都回報成功、`opencode.json` 也寫對了，實際載入的卻是另一個值，而且重開機後又會被蓋一次。所以腳本現在會比對「持久化的環境變數」與「server log 記的實際注入值」，不一致就報警並給修法（見下方 `Test-RuntimeContext`）。
 
@@ -167,19 +167,19 @@ OpenCode 的 `provider.<id>.models.<tag>` schema 只認 `limit: { context, outpu
 
 （當時記的「`OLLAMA_CONTEXT_LENGTH` 進場前就已是 32768、來源不明」已經查明是桌面 app 的 GUI 預設值，見上面那一段。這台之所以矇混過關，是因為腳本判定「已是目標值」就沒改也沒重啟 —— 剛好等於 8GB 這階的建議值。）
 
-2026-09-11 在 `NB-YI` 用改名後的腳本跑 `-Check`（Ollama 0.34.0）：環境變數、server log 實際注入值、`opencode.json` 三處都是 32768，沒有警告。**但這個結果分不出 GUI 設定有沒有改過** —— 環境變數與 GUI 出廠預設剛好都是 32768，蓋不蓋都一樣。要確認只能到桌面 app 的 Settings 看，或暫時把環境變數改成別的值再看 log。
+2026-09-11 在這台 8GB 筆電上用改名後的腳本跑 `-Check`（Ollama 0.34.0）：環境變數、server log 實際注入值、`opencode.json` 三處都是 32768，沒有警告。**但這個結果分不出 GUI 設定有沒有改過** —— 環境變數與 GUI 出廠預設剛好都是 32768，蓋不蓋都一樣。要確認只能到桌面 app 的 Settings 看，或暫時把環境變數改成別的值再看 log。
 
 同一天用 `manage-model.ps1 -Add gemma4:e4b-it-qat -Context 16384` 做端到端驗證：衍生模型 `gemma4:e4b-it-qat-ctx16k` 載入後 `ollama ps` 為 100% GPU、CONTEXT 16384（蓋過全域 32768），`-Bench` 量到生成 64.9 tok/s、讀提示 174.7 tok/s。驗證完已用 `-Remove` 刪掉衍生模型，原模型不受影響。
 
 同一台稍早用原生 API 冷載入同一顆模型時，第一次只量到 1.65 tok/s（載入 84 秒）。之後同樣條件量到 64.9，差 40 倍。推測第一次是筆電 GPU 還沒從省電狀態醒來，但沒有深究。**筆電量速度要接電源，且丟掉冷載入後的第一個數字**。
 
 **16GB 那階的 10291 MiB 已在第二台機器重現**
-`PC-YI-FY`（RTX 5060 Ti 16GB）用 `nvidia-smi` 取載入前後差值，131072 下實佔 **10288 MiB**，與桌機首次實測的 10291 MiB 只差 3 MiB。這一階的數字可以當定論用。
+第二台 RTX 5060 Ti 16GB 桌機用 `nvidia-smi` 取載入前後差值，131072 下實佔 **10288 MiB**，與桌機首次實測的 10291 MiB 只差 3 MiB。這一階的數字可以當定論用。
 
 量的時候要先確認沒有殘留 —— 殺 `ollama` 與 `ollama app` 不會帶走 `llama-server.exe`，那才是真正吃 VRAM 的行程。漏殺它會讓 baseline 多算幾個 GB（第一次量出 5206 MiB 的差值就是這樣來的，看起來還「比較省」，其實是舊實例已經佔著）。三個名字都要殺：`ollama`、`ollama app`、`llama-server`。
 
-**第三台 16GB 機器 `PC-YI-SL` 也驗過（2026-09-10）**
-規格與 `PC-YI-FY` 相同（RTX 5060 Ti 16GB、61.7 GB 記憶體，另有 AMD 內顯沒被誤選），Ollama 0.33.3 由桌面 app 啟動。`-Check` 全綠：環境變數、server log 實際注入值、`opencode.json` 三處都是 131072，代表這台的 GUI 設定也已改過，沒被出廠的 32768 蓋掉。走 `/v1/chat/completions` 載入 `gemma4:12b` 後 `ollama ps` 為 100% GPU、CONTEXT 131072。
+**第三台 16GB 桌機也驗過（2026-09-10）**
+規格與第二台相同（RTX 5060 Ti 16GB、61.7 GB 記憶體，另有 AMD 內顯沒被誤選），Ollama 0.33.3 由桌面 app 啟動。`-Check` 全綠：環境變數、server log 實際注入值、`opencode.json` 三處都是 131072，代表這台的 GUI 設定也已改過，沒被出廠的 32768 蓋掉。走 `/v1/chat/completions` 載入 `gemma4:12b` 後 `ollama ps` 為 100% GPU、CONTEXT 131072。
 
 顯存差值約 10509 MiB，比定論值多約 220 MiB —— 但這次**沒有**照上一段先殺三個行程，baseline 是幾分鐘前讀的，差距在桌面環境波動範圍內，不推翻 10291 MiB。冷載入 68.8 秒，熱狀態回一句話 4.8 秒。
 
@@ -198,7 +198,7 @@ PARAMETER num_ctx 16384
 
 已實測驗證：這樣 `ollama create` 出來的衍生模型，走 OpenAI 相容端點載入時 `ollama ps` 的 CONTEXT 確實是 16384，蓋過全域設定。這也是 OpenCode 這條路上唯一能做到逐一模型控制上下文的方法（`num_ctx` 從 OpenAI 端點傳不進去，見下）。衍生模型共用權重 blob，不額外佔磁碟。
 
-`PC-YI-FY` 上留著的 `gemma4:12b-ctx16k` 就是這條結論的證物：與 `gemma4:12b` 指向同一批權重 blob、其餘參數全同，只多一個 `PARAMETER num_ctx 16384`。**沒有任何設定引用它**（`opencode.json` 只定義 `gemma4:12b`），磁碟成本為零，留著是為了日後要複驗「Modelfile 蓋過全域」時不必重建 —— 跑 `ollama run gemma4:12b-ctx16k` 再看 `ollama ps` 的 CONTEXT 即可。
+第二台 16GB 桌機上留著的 `gemma4:12b-ctx16k` 就是這條結論的證物：與 `gemma4:12b` 指向同一批權重 blob、其餘參數全同，只多一個 `PARAMETER num_ctx 16384`。**沒有任何設定引用它**（`opencode.json` 只定義 `gemma4:12b`），磁碟成本為零，留著是為了日後要複驗「Modelfile 蓋過全域」時不必重建 —— 跑 `ollama run gemma4:12b-ctx16k` 再看 `ollama ps` 的 CONTEXT 即可。
 
 **`num_ctx` 無法從 OpenAI 相容端點傳入（已實測）**
 同一台機器上三個對照：`/v1/chat/completions` 不帶參數 → 載入 4096；`/v1/chat/completions` 帶 `options.num_ctx=32768` → 仍是 4096，被靜默忽略；原生 `/api/chat` 帶同樣參數 → 32768。OpenCode 走 `@ai-sdk/openai-compatible`，打的是前者，所以 `opencode.json` 在協定層面上就無法決定實際載入的上下文，只能靠 `OLLAMA_CONTEXT_LENGTH` 或 Modelfile。
@@ -209,7 +209,7 @@ PARAMETER num_ctx 16384
 **24GB 那階選 MoE**
 `gemma4:26b-a4b-it-qat`（16 GB）總參數 26B 但每次只啟用 4B，同顯存下比 31B 密集模型快得多。
 
-**MoE 實測：更快，但沒有更會自我檢查（2026-08-22，PC-YI-FY）**
+**MoE 實測：更快，但沒有更會自我檢查（2026-08-22，RTX 5060 Ti 16GB 桌機）**
 在 16GB 卡（RTX 5060 Ti）上實測，權重 16 GB 塞不進 VRAM，靠 61.7 GB 系統記憶體做 CPU offload：
 
 | 模型 | 分配 | 速度 |
@@ -238,7 +238,7 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 
 實務結論：先寫 `AGENTS.md`，別急著換模型；且**不要相信模型的驗證聲明**，重要改動自己 `git diff`。要它驗證就寫「把 grep 的原始輸出貼出來」（執行），而不是「去確認有沒有殘留」（稽核）。
 
-**31B 密集模型實測：跑得動，但慢十倍、沒有更可靠（2026-09-10，PC-YI-SL）**
+**31B 密集模型實測：跑得動，但慢十倍、沒有更可靠（2026-09-10，另一台 RTX 5060 Ti 16GB 桌機）**
 在 16GB 卡（RTX 5060 Ti、61.7 GB 記憶體）上下載 `gemma4:31b-it-qat`（`ollama list` 顯示 18 GB）。先殺三個行程、由桌面 app 重啟 Ollama 再量，上下文沿用全域 131072：
 
 | 模型 | 分配 | 顯存差值 | 生成速度 |
@@ -268,8 +268,8 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 
 也就是說，失敗主要發生在「搜尋」這一步，而不是「判斷」。實務上值得在專案 `AGENTS.md` 寫明「搜尋名稱時不分大小寫」—— 這條還沒實測效果。
 
-**`qwen3.8:27b` 實測速度：比 31B 快近一倍，但仍是 12B 的七分之一（2026-09-12，PC-YI-FY）**
-和 `PC-YI-SL` 同規格（RTX 5060 Ti 16GB、61.7 GB 記憶體），Ollama 0.34.0。用 `manage-model.ps1 -Add qwen3.8:27b -Context 32768` 一次跑完：registry 查到 17.7 GB、評估段落預告「權重 16.5 GB 大於可用顯存 15.9 GB，一定 offload」、下載、建 `qwen3.8:27b-ctx32k`、寫進 `opencode.json`、測試訊息、量速度。`/api/show` 回報的能力是 `completion, vision, tools, thinking`，OpenCode 三個旗標都開。
+**`qwen3.8:27b` 實測速度：比 31B 快近一倍，但仍是 12B 的七分之一（2026-09-12，RTX 5060 Ti 16GB 桌機）**
+和 31B 那台同規格、但不是同一台（RTX 5060 Ti 16GB、61.7 GB 記憶體），Ollama 0.34.0。用 `manage-model.ps1 -Add qwen3.8:27b -Context 32768` 一次跑完：registry 查到 17.7 GB、評估段落預告「權重 16.5 GB 大於可用顯存 15.9 GB，一定 offload」、下載、建 `qwen3.8:27b-ctx32k`、寫進 `opencode.json`、測試訊息、量速度。`/api/show` 回報的能力是 `completion, vision, tools, thinking`，OpenCode 三個旗標都開。
 
 | 模型 | 上下文 | 分配 | 生成速度 |
 |---|---|---|---|
@@ -284,14 +284,14 @@ MoE 唯一一次「真的驗證」是運氣不是能力。兩個模型都會**�
 
 Qwen 27B 掉到 CPU 的比例（39%）比 31B（57%）少，速度也快了近一倍（7.0 對 3.9）。但兩者的上下文不同（32768 對 131072），而且不是同一台機器，所以不能說成是模型本身比較快。每輪 agent 任務大概要好幾分鐘，實際能不能用還沒驗證。讀提示速度第一次 23.7、第二次 113.9，差這麼多可能是第二次的提示命中了快取，沒有深究。
 
-**`qwen3.8:27b` 在 `LT-YI-RS` 跑 128K 全 GPU（2026-10-28）**
-`LT-YI-RS` 是 Windows on ARM 筆電（NVIDIA RTX Spark N1X），64 GB 統一記憶體由使用者切成 RAM 32 GB＋VRAM 32 GB，`nvidia-smi` 回報 31232 MiB、腳本判讀 30.5 GB。Ollama 0.40.12 由桌面 app 啟動。設了 `OLLAMA_FLASH_ATTENTION=1` 與 `OLLAMA_KV_CACHE_TYPE=q8_0`（使用者環境變數，全域），再跑 `-Add qwen3.8:27b -Context 131072`：
+**`qwen3.8:27b` 在 32GB VRAM 上跑 128K 全 GPU（2026-10-28）**
+機器是 Windows on ARM 筆電（NVIDIA RTX Spark N1X），64 GB 統一記憶體由使用者切成 RAM 32 GB＋VRAM 32 GB，`nvidia-smi` 回報 31232 MiB、腳本判讀 30.5 GB。Ollama 0.40.12 由桌面 app 啟動。設了 `OLLAMA_FLASH_ATTENTION=1` 與 `OLLAMA_KV_CACHE_TYPE=q8_0`（使用者環境變數，全域），再跑 `-Add qwen3.8:27b -Context 131072`：
 
 | 模型 | 上下文 | KV cache | 分配 | 生成速度 | 讀提示 |
 |---|---|---|---|---|---|
 | `qwen3.8:27b-ctx128k`（Q4，權重 16.5 GiB） | 131072 | q8_0 | **100% GPU**（`ollama ps` SIZE 18 GB） | **14.5–16.3 tok/s** | 91.1–144.5 tok/s |
 
-server log 顯示 KV cache 只建在 **16 層**：131072 下 K、V 各 2176 MiB（q8_0），合計 4352 MiB；另有 1 層 f16 的 512 MiB。也就是 Qwen 3.8 只有少數層是完整注意力，這解釋了 `PC-YI-FY` 上 32K→64K 的 SIZE 只多 1 GB。那邊速度掉兩成，主要是因為多出的那 1 GB 把權重擠到 CPU，而不是 KV 本身很大。換成 f16 推算約 8.7 GB，32 GB 的 VRAM 也放得下。
+server log 顯示 KV cache 只建在 **16 層**：131072 下 K、V 各 2176 MiB（q8_0），合計 4352 MiB；另有 1 層 f16 的 512 MiB。也就是 Qwen 3.8 只有少數層是完整注意力，這解釋了 16GB 桌機上 32K→64K 的 SIZE 只多 1 GB。那邊速度掉兩成，主要是因為多出的那 1 GB 把權重擠到 CPU，而不是 KV 本身很大。換成 f16 推算約 8.7 GB，32 GB 的 VRAM 也放得下。
 
 這台的 Windows on ARM 版 Ollama 確實會用 GPU（`ollama ps` 的 RUNNER 為 `llamacpp`、PROCESSOR 100% GPU），不需要改用 llama.cpp。速度約 15 tok/s，是 16GB 卡上 offload 版（7.0）的兩倍，但只有 12B 在 16GB 卡上的三分之一。這筆是 `-Add` 跑完後直接量的，模型已由測試訊息載入，所以沒有冷載入那次。agent 實際表現還沒在 OpenCode 裡測。
 
@@ -408,7 +408,7 @@ pwsh -NoProfile -File ./tests/test-local-llm-model.ps1
 - **setup**：語法／編碼、Windows 與 Apple Silicon 兩條選型路徑、顯卡篩選規則、LaunchAgent 的 plist 是否為合法 XML、設定合併與備份（含能力旗標）、`.json`／`.jsonc` 並存時的解析與寫入目標、server log 的上下文解析與不一致偵測。
 - **model**：參數組（`-Context` 只能配 `-Add`）、tag 正規化與 registry 網址、衍生模型命名與 `num_ctx` 解析、能力旗標、速度與分配換算、冷載入判斷與平均、已載入模型的段落、顯存粗估、`limit.context` 比對、移除目標挑選（含同前綴誘餌）、設定移除與 `model`／`agent.*.model` 殘留、API 欄位缺漏。
 
-會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 `NB-YI` 用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。2026-09-12 在 `PC-YI-FY`（16GB）又跑了 `-Check`、`-List`、`-Bench`，以及寫進真正設定檔的 `-Add qwen3.8:27b`。`-Bench` 的暖機判斷還沒在實機走過，因為 `-Add` 量速度前，測試訊息已經把模型載入了。
+會打 Ollama 或 registry 的函式不在隔離測試裡，只測它們背後的純函式。實際行為是 2026-09-11 在 8GB 筆電上用真的 Ollama 跑 `-Check`、`-List`、`-Add`、`-Remove` 驗過的（設定檔指到暫存目錄）。2026-09-12 在 16GB 桌機上又跑了 `-Check`、`-List`、`-Bench`，以及寫進真正設定檔的 `-Add qwen3.8:27b`。`-Bench` 的暖機判斷還沒在實機走過，因為 `-Add` 量速度前，測試訊息已經把模型載入了。
 
 StrictMode 下 `[xml]` 物件要從 `DocumentElement` 往下取：plist 帶 DOCTYPE，`$doc.plist` 會同時對到 DOCTYPE 節點與根元素，再取 `.dict` 就丟例外。
 

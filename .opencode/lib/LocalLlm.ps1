@@ -514,7 +514,7 @@ function Install-OllamaModel {
 }
 
 function Get-DerivedModelTag {
-    <#  qwen3.8:27b + 32768 -> qwen3.8:27b-ctx32k（沿用 PC-YI-FY 上 gemma4:12b-ctx16k 的命名）。
+    <#  qwen3.8:27b + 32768 -> qwen3.8:27b-ctx32k（沿用 16GB 桌機上 gemma4:12b-ctx16k 的命名）。
         local-llm-model 的 -Remove 靠「<tag>-ctx<數字>」這個形式認出衍生模型。 #>
     param([string] $Tag, [int] $Context)
     $suffix = if ($Context % 1024 -eq 0) { "$($Context / 1024)k" } else { "$Context" }
@@ -594,7 +594,7 @@ function Format-LoadedModelLines {
 
 function Clear-OtherLoadedModels {
     <#  別的模型佔著顯存時，量到的 CPU/GPU 分配與速度都不準。
-        PC-YI-SL 就踩過：31B 沒卸載，12B 被擠到部分 CPU。 #>
+        16GB 桌機就踩過：31B 沒卸載，12B 被擠到部分 CPU。 #>
     param([string] $Tag)
 
     $others = @(Get-LoadedModels | Where-Object { $_.Name -ne $Tag })
@@ -637,7 +637,7 @@ function ConvertTo-SpeedResult {
 
 function Test-ColdRun {
     <#  這次量測有沒有包含載入模型。冷載入後第一次的數字偏低，不能當結果：
-        PC-YI-FY 上 gemma4:12b 冷載入那次 28.1 tok/s、之後 45.7 與 47.9；NB-YI 上差到 40 倍。 #>
+        16GB 桌機上 gemma4:12b 冷載入那次 28.1 tok/s、之後 45.7 與 47.9；8GB 筆電上差到 40 倍。 #>
     param($Result)
     return ($null -ne $Result -and $Result.LoadSec -ge 1)
 }

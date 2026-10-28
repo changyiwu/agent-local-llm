@@ -63,7 +63,7 @@ Assert-Equal '17.7 GB' (Format-GB 17739000000) '大小用十進位 GB，和 olla
 Write-Host "`n[3] Modelfile 衍生模型" -ForegroundColor Cyan
 
 Assert-Equal 'qwen3.8:27b-ctx32k'    (Get-DerivedModelTag -Tag 'qwen3.8:27b' -Context 32768)  '32768 命名成 ctx32k'
-Assert-Equal 'gemma4:12b-ctx16k'     (Get-DerivedModelTag -Tag 'gemma4:12b' -Context 16384)   '和 PC-YI-FY 上既有的 gemma4:12b-ctx16k 同名'
+Assert-Equal 'gemma4:12b-ctx16k'     (Get-DerivedModelTag -Tag 'gemma4:12b' -Context 16384)   '和 16GB 桌機上既有的 gemma4:12b-ctx16k 同名'
 Assert-Equal 'qwen3.8:27b-ctx128k'   (Get-DerivedModelTag -Tag 'qwen3.8:27b' -Context 131072) '131072 命名成 ctx128k'
 Assert-Equal 'qwen3.8:latest-ctx32k' (Get-DerivedModelTag -Tag 'qwen3.8' -Context 32768)      '沒寫 tag 時先補 latest'
 Assert-Equal 'qwen3.8:27b-ctx50000'  (Get-DerivedModelTag -Tag 'qwen3.8:27b' -Context 50000)  '不是 1024 倍數時直接寫數字'
@@ -72,7 +72,7 @@ $mf = New-ContextModelfile -Tag 'qwen3.8:27b' -Context 32768
 Assert-True ($mf -match '(?m)^FROM qwen3\.8:27b$')          'Modelfile 的 FROM 指向原模型'
 Assert-True ($mf -match '(?m)^PARAMETER num_ctx 32768$')    'Modelfile 釘住 num_ctx'
 
-# /api/show 的 parameters 實際長相（NB-YI 上 gemma4:e4b-it-qat，沒有 num_ctx）
+# /api/show 的 parameters 實際長相（8GB 筆電上 gemma4:e4b-it-qat，沒有 num_ctx）
 $plain = "temperature                    1`ntop_k                          64`ntop_p                          0.95"
 Assert-True ($null -eq (Read-NumCtxFromParameters -Text $plain)) '沒釘 num_ctx 的模型回 $null（吃全域）'
 $pinned = "num_ctx                        16384`r`ntemperature                    1"
@@ -111,7 +111,7 @@ Assert-Equal '57%/43% CPU/GPU'  (ConvertTo-LoadSummary -SizeBytes 100 -VramBytes
 Assert-Equal '100% CPU'         (ConvertTo-LoadSummary -SizeBytes 100 -VramBytes 0)                 '完全沒進顯存'
 Assert-Equal '未知'             (ConvertTo-LoadSummary -SizeBytes 0 -VramBytes 0)                   '大小是 0 時不除以零'
 
-# 31B 在 PC-YI-SL 量到的量級：300 tokens 約 77 秒
+# 31B 在 16GB 桌機上量到的量級：300 tokens 約 77 秒
 $resp = [pscustomobject]@{
     eval_count = 300; eval_duration = 76900000000
     prompt_eval_count = 30; prompt_eval_duration = 2000000000
@@ -126,7 +126,7 @@ Assert-Equal 'length' $speed.DoneReason 'done_reason 照帶'
 $empty = ConvertTo-SpeedResult -Response ([pscustomobject]@{ done = $true })
 Assert-True ($null -eq $empty.EvalTps) '回應缺欄位時不丟例外、速度回 $null'
 
-# 暖機判斷：PC-YI-FY 上 gemma4:12b 冷載入那次 28.1 tok/s（載入 37.8 秒），之後 45.7 與 47.9
+# 暖機判斷：16GB 桌機上 gemma4:12b 冷載入那次 28.1 tok/s（載入 37.8 秒），之後 45.7 與 47.9
 Assert-True  (Test-ColdRun $speed)                                  '包含載入的那次算冷載入'
 Assert-True  (-not (Test-ColdRun ([pscustomobject]@{ LoadSec = 0.1 }))) '模型已在顯存時不算冷載入'
 Assert-True  (-not (Test-ColdRun ([pscustomobject]@{ LoadSec = 0 })))   '缺 load_duration 換算成 0 時不算冷載入'
